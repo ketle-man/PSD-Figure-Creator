@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.venv/
+venv/
+
+# ComfyUI runtime artifacts
+input/
+output/
+models/
+
+# Archives
+*.rar
+*.zip
+*.tar.gz
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,205 @@
+# ComfyUI PSD Figure Creator
+
+**Language / 言語 / 语言:** [English](README.md) | [日本語](README.ja.md) | 中文
+
+一个 ComfyUI 自定义节点，用于加载 PSD 文件、在图层上放置绑定控制点、
+并将合成结果作为 `IMAGE` + `MASK` 输出。
+
+---
+
+## 功能
+
+- **交互式图层查看器** — 切换图层显示/隐藏，重命名图层和自定义组
+- **自定义组** — 将图层归入命名组，拖拽调整绘制顺序
+- **绑定系统** — 直接在画布上为图层放置控制点：
+  - **R**（蓝色）— 仅旋转
+  - **MR**（红色/橙色）— 移动 ＋ 旋转
+  - **SW**（绿色）— 切换：旋转手柄以循环切换最多 12 个注册组的显示状态
+- **设置模式 / 姿势模式** — 在设置模式中配置绑定，在姿势模式中进行动作
+- **库** — 保存/加载命名模型文件（`.psd-model.json`）和姿势文件
+- **背景选项** — 棋盘格图案 / 纯色 / 本地图像 / 上游 `IMAGE` 节点
+- **Capture → Queue Prompt** — 将当前画布状态烘焙为输出图像
+- **国际化** — 通过 `navigator.language` 自动检测语言（日语 / 英语 / 简体中文）
+
+---
+
+## 截图
+
+### 节点
+
+![节点总览](docs/1_node.png)
+
+### 编辑器 — 图层选项卡（设置模式）
+
+![MR 点位放置中的图层选项卡](docs/2_setup_layers.png)
+
+### 编辑器 — 父级选项卡
+
+![显示全部绑定标签的父级选项卡](docs/3_setup_parent.png)
+
+### 编辑器 — 切换选项卡
+
+![SW 点位配置中的切换选项卡](docs/4_setup_switch.png)
+
+### 节点预览 — 绑定完成
+
+![显示所有绑定点的节点预览](docs/5_setup_complete.png)
+
+### 库 — 模型与姿势浏览器
+
+![库面板](docs/6_library.png)
+
+### 在 ComfyUI 工作流中使用 Capture
+
+![工作流中的 Capture 使用示例](docs/7_capture.png)
+
+---
+
+## 安装
+
+```bash
+# 1. 将此文件夹复制或创建符号链接到 ComfyUI 的 custom_nodes 目录
+#    例：ComfyUI/custom_nodes/psd-image-loader/
+
+# 2. 安装 Python 依赖
+pip install psd-tools
+```
+
+重启 ComfyUI，节点将显示在 **image/psd → PSD Figure Creator** 下。
+
+> **从 PSD Loader（≤ v2.16）升级：**  
+> 如果工作流 JSON 中包含 `"PSDLoader"`，请替换为 `"PSDFigureCreator"`。
+
+---
+
+## 节点输入输出
+
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| `psd_filename` | STRING | 相对于 `input/psd/` 目录的 PSD 文件路径 |
+| `layer_config` | STRING | UI 编辑器生成的 JSON 字符串 |
+| `output_width` | INT | 输出宽度（像素），0 = 使用 PSD 原始尺寸 |
+| `output_height` | INT | 输出高度（像素），0 = 使用 PSD 原始尺寸 |
+| `image_data` | STRING | 来自 Capture 的 Base64 PNG（跳过服务端合成） |
+| `background_image` | IMAGE | 合成为最底层的上游节点图像（可选） |
+
+| 输出 | 类型 | 说明 |
+|---|---|---|
+| `image` | IMAGE | 合成后的 RGB 图像 |
+| `mask` | MASK | Alpha 通道 |
+
+---
+
+## 界面概览
+
+```
+[✨ 新建] [📂 PSD 文件]  [⟳]
+[Editor]               [RC]
+[📸 Capture]
+ ┌────────────────────────┐
+ │  预览画布               │
+ └────────────────────────┘
+ Point Size: ─────────────
+ BG: [■ 颜色][✕] [🖼 图像][✕] [🔗 已连接?]
+```
+
+- **Editor** — 打开全屏设置/姿势模态框
+- **RC** — 重置摄像机（平移 + 缩放）
+- **✨ 新建** — 清除所有绑定、SW 图层和姿势（有确认提示）
+
+### 设置模态框标签页
+
+| 标签页 | 内容 |
+|---|---|
+| 图层 | 图层树、自定义组管理、绑定模式按钮（R / MR / SW） |
+| 父级 | 用于传播变换的父子层级 |
+| 切换 | SW 图层列表和组槽编辑器 |
+
+---
+
+## 绑定系统
+
+### R — 旋转
+蓝色圆点。在姿势模式下拖拽，可绕放置的轴心旋转图层。
+
+### MR — 移动 ＋ 旋转
+红色原点 ＋ 橙色手柄。拖拽手柄可同时进行移动和旋转。
+
+### SW — 切换
+绿色原点 ＋ 青色手柄。旋转手柄以 30° 为步进切换已注册自定义组的显示状态
+（最多 12 个状态 × 30° ＝ 360°）。  
+在设置模式下拖拽原点可重新定位；拖拽手柄可调整半径和初始角度。
+
+---
+
+## 背景合成优先级（从高到低）
+
+1. **ComfyUI `background_image` 输入** — 服务端合成（信箱式缩放，保持宽高比）
+2. **本地背景图像** — 通过 `🖼 图像` 按钮加载，在客户端渲染
+3. **背景颜色** — 通过颜色选择器选定的纯色
+4. **棋盘格图案** — 默认透明背景指示器
+
+---
+
+## 文件结构
+
+```
+psd-image-loader/
+├── __init__.py              # 节点注册
+├── psd_loader_node.py       # PSDFigureCreatorNode
+├── psd_utils.py             # psd-tools 合成辅助函数
+├── server.py                # aiohttp API 路由（upload / layers / preview / library）
+├── requirements.txt
+└── web/
+    ├── js/
+    │   ├── psd_loader.js    # 前端（画布、模态框、绑定）
+    │   └── i18n.js          # 翻译字典 + t() 函数
+    └── css/
+        └── psd_loader.css
+```
+
+---
+
+## layer_config 数据结构
+
+```jsonc
+{
+  "visibility":    { "<layerId>": true | false },
+  "renamed":       { "<layerId>": "显示名称" },
+  "custom_groups": [{ "name": "...", "layer_ids": [...], "visible": true }],
+  "layer_order":   [{ "id": "...", "children": [...] }],
+  "rigging": {
+    "<layerId>": {
+      "r":         { "x": 0, "y": 0 },
+      "mr":        { "x": 0, "y": 0 },
+      "mr_radius": 40
+    }
+  },
+  "pose": {
+    "<layerId>": { "angle": 0, "tx": 0, "ty": 0 }
+  },
+  "sw_layers": [{
+    "id": "...", "name": "sw1",
+    "points": [{
+      "id": "...", "name": "pt1",
+      "x": 512, "y": 512,
+      "radius": 60, "angle": 0,
+      "groups": ["<cgId>", ...]
+    }]
+  }]
+}
+```
+
+---
+
+## 运行环境
+
+- **ComfyUI**（最新版）
+- **Python 3.10+**
+- **psd-tools ≥ 1.9.0**
+
+---
+
+## 许可证
+
+MIT
