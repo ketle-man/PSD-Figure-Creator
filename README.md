@@ -14,7 +14,7 @@ and compositing the result as `IMAGE` + `MASK` outputs.
 - **Rigging system** — place control points on layers directly on the canvas:
   - **R** (blue) — rotation only
   - **MR** (red/orange) — move + rotate
-  - **SW** (green) — switch: rotate a handle to cycle through up to 12 registered group states
+  - **SW** (green) — switch: rotate a handle to step through up to 12 slots; register individual layers, custom groups `[Group]`, or PSD folder groups `[Folder]` (groups and folders expand per-layer into multiple slots)
 - **Setup mode / Pose mode** — configure rigs in setup mode, animate in pose mode
 - **Library** — save/load named model files (`.psd-model.json`) and pose files
 - **Background options** — checker pattern / solid color / local image / upstream `IMAGE` node
@@ -126,9 +126,18 @@ Blue dot. Drag in pose mode to rotate the layer around the placed pivot.
 Red origin + orange handle. Drag the handle to move and rotate simultaneously.
 
 ### SW — Switch
-Green origin + cyan handle. Rotating the handle steps through registered custom-group
-states in 30° increments (maximum 12 states × 30° = 360°).  
+Green origin + cyan handle. Rotating the handle steps through registered slots in 30° increments (maximum 12 slots × 30° = 360°).  
 Drag the origin in setup mode to reposition; drag the handle to adjust radius and initial angle.
+
+**Slot entry types** (configured in the Switch tab):
+
+| Entry | Label | Slots |
+|---|---|---|
+| Individual PSD layer | `[Layer]` | 1 slot |
+| Custom group | `[Group]` | 1 slot per member layer |
+| PSD folder group | `[Folder]` | 1 slot per leaf layer |
+
+A slot entry whose group or folder has been deleted shows a red row background and a ⚠ icon (orphaned). Delete it manually before adding new entries.
 
 ---
 
@@ -186,7 +195,11 @@ psd-image-loader/
       "id": "...", "name": "pt1",
       "x": 512, "y": 512,
       "radius": 60, "angle": 0,
-      "groups": ["<cgId>", ...]
+      "groups": [
+        "<layerId>",                               // individual PSD layer — 1 slot
+        { "type": "custom_group", "id": "..." },   // custom group — 1 slot per member layer
+        { "type": "psd_group",    "id": "..." }    // PSD folder group — 1 slot per leaf layer
+      ]
     }]
   }]
 }

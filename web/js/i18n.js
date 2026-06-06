@@ -14,6 +14,7 @@ const LOCALES = {
         modelFileLoadFailed:  "モデルファイルの読み込みに失敗しました: {0}",
         maxGroupsReached:     "最大12グループまで登録できます",
         noAssignableLayer:    "割り当て可能なレイヤーがありません",
+        swGroupOrphaned:      "グループが解除されています。削除してください",
         noCustomGroupToRemove:"解除できるカスタムグループがありません",
         layerFetchFailed:     "レイヤー情報の取得に失敗しました: {0}",
         modelSaveFailed:      "モデル保存失敗: {0}",
@@ -80,10 +81,11 @@ const LOCALES = {
         tabSwitch: "スイッチ",
 
         // プレフィックス
-        customPrefix: "[カスタム]",
-        swPrefix:     "[SW]",
-        groupPrefix:  "[グループ]",
-        layerPrefix:  "[レイヤー]",
+        customPrefix:   "[カスタム]",
+        swPrefix:       "[SW]",
+        groupPrefix:    "[グループ]",
+        psdGroupPrefix: "[フォルダ]",
+        layerPrefix:    "[レイヤー]",
 
         // ライブラリ
         noSavedModels:        "保存済みモデルなし",
@@ -123,6 +125,7 @@ const LOCALES = {
         modelFileLoadFailed:  "Failed to load model file: {0}",
         maxGroupsReached:     "Maximum 12 groups allowed",
         noAssignableLayer:    "No assignable layers",
+        swGroupOrphaned:      "Group has been removed. Please delete this entry",
         noCustomGroupToRemove:"No custom groups to remove",
         layerFetchFailed:     "Failed to fetch layer info: {0}",
         modelSaveFailed:      "Model save failed: {0}",
@@ -183,10 +186,11 @@ const LOCALES = {
         tabParent: "Parent",
         tabSwitch: "Switch",
 
-        customPrefix: "[Custom]",
-        swPrefix:     "[SW]",
-        groupPrefix:  "[Group]",
-        layerPrefix:  "[Layer]",
+        customPrefix:   "[Custom]",
+        swPrefix:       "[SW]",
+        groupPrefix:    "[Group]",
+        psdGroupPrefix: "[Folder]",
+        layerPrefix:    "[Layer]",
 
         noSavedModels:        "No saved models",
         noSavedPoses:         "No saved poses",
@@ -223,6 +227,7 @@ const LOCALES = {
         modelFileLoadFailed:  "模型文件加载失败: {0}",
         maxGroupsReached:     "最多允许12个组",
         noAssignableLayer:    "没有可分配的图层",
+        swGroupOrphaned:      "组已被解除，请删除此条目",
         noCustomGroupToRemove:"没有可解除的自定义组",
         layerFetchFailed:     "获取图层信息失败: {0}",
         modelSaveFailed:      "模型保存失败: {0}",
@@ -283,10 +288,11 @@ const LOCALES = {
         tabParent: "父级",
         tabSwitch: "切换",
 
-        customPrefix: "[自定义]",
-        swPrefix:     "[SW]",
-        groupPrefix:  "[组]",
-        layerPrefix:  "[图层]",
+        customPrefix:   "[自定义]",
+        swPrefix:       "[SW]",
+        groupPrefix:    "[组]",
+        psdGroupPrefix: "[文件夹]",
+        layerPrefix:    "[图层]",
 
         noSavedModels:        "无已保存模型",
         noSavedPoses:         "无已保存姿势",

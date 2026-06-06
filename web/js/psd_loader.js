@@ -120,6 +120,64 @@ async function loadLayerImages(filename, layers) {
 }
 
 // ================================================
+// SWグループ展開ヘルパー（PSDフォルダグループ対応）
+// ================================================
+function getPsdGroupLeaves(groupId, layerTree) {
+    function find(nodes) {
+        for (const n of nodes) {
+            if (n.id === groupId && n.kind === 'group' && n.children) {
+                const leaves = [];
+                function collect(ns) {
+                    for (const c of ns) {
+                        if (c.kind !== 'group') leaves.push(c.id);
+                        else if (c.children) collect(c.children);
+                    }
+                }
+                collect(n.children);
+                return leaves;
+            }
+            if (n.children) { const r = find(n.children); if (r) return r; }
+        }
+        return null;
+    }
+    return find(layerTree) || [];
+}
+
+function expandSwGroupEntries(groups, layerTree, customGroups = []) {
+    const cgMap = {};
+    for (const cg of customGroups) cgMap[cg.id] = cg;
+    const result = [];
+    for (let i = 0; i < groups.length; i++) {
+        const entry = groups[i];
+        if (typeof entry === 'string') {
+            result.push({ id: entry, entryIdx: i });
+        } else if (entry?.type === 'psd_group') {
+            const leaves = getPsdGroupLeaves(entry.id, layerTree);
+            for (const id of leaves) result.push({ id, entryIdx: i });
+        } else if (entry?.type === 'custom_group') {
+            const cg = cgMap[entry.id];
+            for (const id of (cg?.layer_ids || [])) result.push({ id, entryIdx: i });
+        }
+    }
+    return result;
+}
+
+function countSwSlots(groups, layerTree, customGroups = []) {
+    const cgMap = {};
+    for (const cg of customGroups) cgMap[cg.id] = cg;
+    let count = 0;
+    for (const entry of groups) {
+        if (typeof entry === 'string') count++;
+        else if (entry?.type === 'psd_group') {
+            count += getPsdGroupLeaves(entry.id, layerTree).length;
+        } else if (entry?.type === 'custom_group') {
+            count += cgMap[entry.id]?.layer_ids?.length ?? 0;
+        }
+    }
+    return count;
+}
+
+// ================================================
 // レイヤー描画（カメラ変換なし、任意の ctx に描く）
 // ================================================
 function renderLayersToCtx(ctx, layers, imageMap, config) {
@@ -146,14 +204,16 @@ function renderLayersToCtx(ctx, layers, imageMap, config) {
     for (const swLayer of (config?.sw_layers || [])) {
         for (const swInfo of (swLayer.points || [])) {
             if (!swInfo.groups?.length) continue;
-            const n = swInfo.groups.length;
+            const flat = expandSwGroupEntries(swInfo.groups, layers, cgList);
+            const n = flat.length;
+            if (n === 0) continue;
             const angle = swInfo.angle ?? 0;
             const range = SW_STEP * n;
             const normAngle = ((angle % range) + range) % range;
-            const activeIdx = Math.min(Math.floor(normAngle / SW_STEP), n - 1);
+            const activeSlot = Math.min(Math.floor(normAngle / SW_STEP), n - 1);
             for (let i = 0; i < n; i++) {
-                const gid = swInfo.groups[i];
-                if (i === activeIdx) {
+                const gid = flat[i].id;
+                if (i === activeSlot) {
                     cgHidden.delete(gid);
                     if (cgMap[gid]) { const unmark = g => { for (const lid of g.layer_ids) { cgHidden.delete(lid); if (cgMap[lid]) unmark(cgMap[lid]); } }; unmark(cgMap[gid]); }
                 } else {
@@ -574,8 +634,9 @@ function drawRigOverlay(ctx, layers, imageMap, rigging, pose, mode, selectedLaye
             const isSelected = selectedSwPointInfo?.swLayerId === swLayer.id
                              && selectedSwPointInfo?.pointId === swInfo.id;
 
-            // グループインデックス計算
-            const n = swInfo.groups?.length ?? 0;
+            // グループインデックス計算（PSDフォルダ/カスタムグループ展開後のスロット数を使用）
+            const flat = expandSwGroupEntries(swInfo.groups || [], layers, customGroups);
+            const n = flat.length;
             let activeIdx = 0;
             if (n > 0) {
                 const range = SW_STEP * n;
@@ -824,8 +885,8 @@ function getEffectiveImageMap(node, config) {
 // ================================================
 // ノード内プレビューキャンバス描画（カメラ変換あり）
 // ================================================
-function drawNodeCanvas(node) {
-    const canvas = node._nodeCanvas;
+function drawNodeCanvas(node, { skipFrameLabel = false, targetCanvas = null } = {}) {
+    const canvas = targetCanvas || node._nodeCanvas;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const W = canvas.width, H = canvas.height;
@@ -949,17 +1010,39 @@ function drawNodeCanvas(node) {
         }
 
         // 出力サイズをフレーム内に表示
-        const label = `${frame.outW} × ${frame.outH}`;
-        ctx.font         = "bold 11px sans-serif";
-        ctx.textAlign    = "right";
-        ctx.textBaseline = "bottom";
-        ctx.fillStyle    = "rgba(0,0,0,0.6)";
-        ctx.fillRect(fx + fw - 82, fy + fh - 18, 80, 16);
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.fillText(label, fx + fw - 4, fy + fh - 3);
+        if (!skipFrameLabel) {
+            const label = `${frame.outW} × ${frame.outH}`;
+            ctx.font         = "bold 11px sans-serif";
+            ctx.textAlign    = "right";
+            ctx.textBaseline = "bottom";
+            ctx.fillStyle    = "rgba(0,0,0,0.6)";
+            ctx.fillRect(fx + fw - 82, fy + fh - 18, 80, 16);
+            ctx.fillStyle = "rgba(255,255,255,0.9)";
+            ctx.fillText(label, fx + fw - 4, fy + fh - 3);
+        }
     }
 
     if (node._previewStatusEl) node._previewStatusEl.textContent = "";
+}
+
+// サムネイル用キャプチャ：ラベルオフで描画→取得→状態を復元
+function captureThumbFromNode(node, thumbW, thumbH) {
+    const canvas = node._nodeCanvas;
+    if (!canvas) return null;
+    const wasShowing = node._showRigLabels;
+    node._showRigLabels = false;
+    drawNodeCanvas(node, { skipFrameLabel: true });
+    const fr = computeOutputFrame(node);
+    const w = thumbW || 140;
+    const h = thumbH !== undefined ? thumbH : (fr ? Math.max(1, Math.round(w * fr.fh / fr.fw)) : 88);
+    const tc = document.createElement("canvas"); tc.width = w; tc.height = h;
+    const tx = tc.getContext("2d");
+    if (fr) tx.drawImage(canvas, fr.fx, fr.fy, fr.fw, fr.fh, 0, 0, w, h);
+    else    tx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, w, h);
+    const result = tc.toDataURL("image/png");
+    node._showRigLabels = wasShowing;
+    drawNodeCanvas(node);
+    return result;
 }
 
 // ================================================
@@ -1641,7 +1724,7 @@ class PSDModal {
                     ["表示切替", "レイヤー行の 👁 アイコンをクリック"],
                     ["名前変更", "レイヤー名をダブルクリックして編集"],
                     ["順序変更", "レイヤー行をドラッグ&ドロップ"],
-                    ["グループ作成", "レイヤーを複数選択して「グループ作成」ボタン"],
+                    ["カスタムグループ作成", "レイヤーを複数選択して「グループ作成」ボタン — スイッチタブでレイヤー単位に展開可能"],
                     ["グループ解除", "カスタムグループを選択して「グループ解除」ボタン"],
                     ["SWレイヤー追加/削除", "「SW追加」「SW削除」ボタン（スイッチタブで設定）"],
                 ],
@@ -1658,8 +1741,13 @@ class PSDModal {
                 rows: [
                     ["SWレイヤー選択", "左列でSWレイヤーを選択すると右列にSWポイントが表示される"],
                     ["SWポイント追加", "Setupモードで SW ボタンを選択してキャンバスをクリック"],
-                    ["グループ管理", "+ / − ボタンでグループを追加・削除。レイヤーをドラッグでグループに割り当て"],
-                    ["動作", "SWポイントのハンドル角度でアクティブグループが切り替わる"],
+                    ["エントリ追加/削除", "+ ボタンでエントリを追加、選択して − ボタンで削除"],
+                    ["エントリ種別", "[グループ] カスタムグループ / [フォルダ] PSDフォルダ / [レイヤー] 個別レイヤー — ドロップダウンで切り替え可能"],
+                    ["スロット展開", "[グループ][フォルダ]はレイヤー数分のスロットに自動展開。例: 3レイヤーのグループ = 3スロット（0°・30°・60°）"],
+                    ["角度表示", "1スロット: 「30°」、複数スロット: 「0°-60°」のように範囲表示"],
+                    ["最大スロット数", "全エントリの合計スロット数が12まで"],
+                    ["⚠ 孤立エントリ", "グループ/フォルダが解除・削除されると赤背景と ⚠ で表示 → 該当エントリを削除してください"],
+                    ["動作", "SWポイントのハンドル角度でアクティブスロットが切り替わる（1スロット = 30°）"],
                 ],
             },
             {
@@ -1668,7 +1756,7 @@ class PSDModal {
                     ["有効化", "ヘッダーの Setup ボタンをクリック（もう一度クリックで通常モードに戻る）"],
                     ["R ポイント（青）", "回転軸。選択レイヤー上でクリックして配置。Pose モードでは回転ドラッグで角度を変える"],
                     ["MR ポイント（赤）", "平行移動軸（可動範囲円あり）。Pose モードで orange ハンドルをドラッグして移動"],
-                    ["SW ポイント（緑）", "スイッチポイント。ハンドル（水色）を回転させてグループを切り替える"],
+                    ["SW ポイント（緑）", "スイッチポイント。ハンドル（水色）を回転させてアクティブスロットを切り替える"],
                     ["ポイント削除", "対象レイヤーを選択して「🗑 削除」ボタン"],
                 ],
             },
@@ -1680,7 +1768,7 @@ class PSDModal {
                     ["移動 (MR)", "orange ハンドルをドラッグして平行移動（可動範囲円内で制限）"],
                     ["スイッチ切替", "水色の SW ハンドルを回転"],
                     ["ラベル表示", "🏷 ラベル ボタンでポイント上のレイヤー名を表示/非表示"],
-                    ["ポーズ保存", "📷 ポーズ ボタン（右クリック: SW状態込みで保存）"],
+                    ["ポーズ保存", "📷 ポーズ ボタン（右クリック: SW状態込みで保存）。サムネイルはラベル非表示で自動作成"],
                     ["ポーズリセット", "RP ボタンで全ポーズをリセット"],
                 ],
             },
@@ -1689,6 +1777,7 @@ class PSDModal {
                 rows: [
                     ["ズーム", "マウスホイール"],
                     ["パン", "ドラッグ（何もない場所）"],
+                    ["リセット", "RC ボタン"],
                 ],
             },
             {
@@ -1717,18 +1806,44 @@ class PSDModal {
                     ["切换可见性", "点击图层行的 👁 图标"],
                     ["重命名", "双击图层名称进行编辑"],
                     ["调整顺序", "拖放图层行"],
-                    ["创建组", "多选图层后点击「创建组」按钮"],
+                    ["创建自定义组", "多选图层后点击「创建组」按钮 — 可在切换选项卡中按图层展开"],
                     ["解除组", "选中自定义组后点击「解除组」按钮"],
+                    ["SW图层", "使用「添加SW」/「删除SW」按钮（在切换选项卡中配置）"],
+                ],
+            },
+            {
+                title: "切换选项卡",
+                rows: [
+                    ["选择SW图层", "在左列选择SW图层，右列显示SW点"],
+                    ["添加SW点", "在Setup模式下选择SW后点击画布"],
+                    ["添加/删除条目", "点击 + 添加条目，选中后点击 − 删除"],
+                    ["条目类型", "[组] 自定义组 / [文件夹] PSD文件夹 / [图层] 单个图层 — 可通过下拉菜单切换"],
+                    ["插槽展开", "[组][文件夹]自动按内含图层数展开。例: 3图层的组 = 3个插槽（0°・30°・60°）"],
+                    ["最大插槽数", "所有条目的插槽总数最多12个"],
+                    ["⚠ 孤立条目", "组/文件夹被解除时显示红色背景和 ⚠ → 请删除该条目"],
+                    ["动作", "SW点手柄角度切换当前插槽（1插槽 = 30°）"],
                 ],
             },
             {
                 title: "Setup 模式",
                 rows: [
-                    ["启用", "点击标题栏的 Setup 按钮"],
+                    ["启用", "点击标题栏的 Setup 按钮（再次点击退出）"],
                     ["R 点（蓝色）", "旋转轴，点击放置。Pose模式下拖动旋转"],
                     ["MR 点（红色）", "平移轴，Pose模式下拖动橙色手柄移动"],
-                    ["SW 点（绿色）", "切换点，旋转水色手柄切换组"],
+                    ["SW 点（绿色）", "切换点，旋转水色手柄切换活动插槽"],
                     ["删除点", "选中图层后点击「🗑 删除」按钮"],
+                ],
+            },
+            {
+                title: "Pose 模式",
+                rows: [
+                    ["启用", "点击标题栏的 Pose 按钮"],
+                    ["旋转 (R)", "拖动蓝色绑定点"],
+                    ["平移 (MR)", "拖动橙色手柄（限于范围圆内）"],
+                    ["切换", "旋转水色 SW 手柄"],
+                    ["标签显示", "点击 🏷 标签 按钮切换点位标签显示"],
+                    ["保存姿势", "点击 📷 姿势 按钮（右键: 含切换状态保存）。缩略图自动隐藏标签后生成"],
+                    ["重置姿势", "点击 RP 重置所有姿势"],
                 ],
             },
             {
@@ -1736,6 +1851,7 @@ class PSDModal {
                 rows: [
                     ["缩放", "鼠标滚轮"],
                     ["平移", "拖动（空白区域）"],
+                    ["重置", "RC 按钮"],
                 ],
             },
             {
@@ -1764,7 +1880,7 @@ class PSDModal {
                     ["Toggle Visibility", "Click the 👁 icon on a layer row"],
                     ["Rename", "Double-click the layer name"],
                     ["Reorder", "Drag & drop layer rows"],
-                    ["Create Group", "Select multiple layers, then click 'Group'"],
+                    ["Create Custom Group", "Select multiple layers, then click 'Group' — expandable per-layer in the Switch tab"],
                     ["Ungroup", "Select a custom group, then click 'Ungroup'"],
                     ["SW Layer", "Use 'Add SW' / 'Del SW' buttons (configure in Switch tab)"],
                 ],
@@ -1781,8 +1897,13 @@ class PSDModal {
                 rows: [
                     ["Select SW Layer", "Pick a SW layer in the left column to see its SW points"],
                     ["Add SW Point", "In Setup mode, select SW then click the canvas"],
-                    ["Manage Groups", "Use + / − to add/remove groups. Drag layers to assign them"],
-                    ["Behavior", "Handle angle determines which group is active"],
+                    ["Add / Remove Entry", "Click + to add an entry; select it and click − to remove"],
+                    ["Entry Types", "[Group] Custom group / [Folder] PSD folder / [Layer] Individual layer — switch via dropdown"],
+                    ["Slot Expansion", "[Group] and [Folder] expand into one slot per contained layer. e.g. a 3-layer group = 3 slots (0°, 30°, 60°)"],
+                    ["Angle Display", "Single slot: '30°' / Multiple slots: '0°–60°' range notation"],
+                    ["Max Slots", "Total slots across all entries: 12"],
+                    ["⚠ Orphaned Entry", "Shown in red with ⚠ when the referenced group/folder no longer exists — delete the entry"],
+                    ["Behavior", "Handle angle selects the active slot (1 slot = 30°)"],
                 ],
             },
             {
@@ -1791,7 +1912,7 @@ class PSDModal {
                     ["Enable", "Click the Setup button in the header (click again to exit)"],
                     ["R Point (blue)", "Rotation pivot. Click to place. In Pose mode, drag to rotate"],
                     ["MR Point (red)", "Translation axis with movement range. In Pose mode, drag orange handle"],
-                    ["SW Point (green)", "Switch point. Rotate the cyan handle to change active group"],
+                    ["SW Point (green)", "Switch point. Rotate the cyan handle to change active slot"],
                     ["Delete Rig", "Select the target layer, then click '🗑 Delete'"],
                 ],
             },
@@ -1803,7 +1924,7 @@ class PSDModal {
                     ["Translate (MR)", "Drag the orange handle (constrained to range circle)"],
                     ["Switch", "Rotate the cyan SW handle"],
                     ["Labels", "Toggle layer name labels with 🏷 Labels"],
-                    ["Save Pose", "Click 📷 Pose (right-click to include switch states)"],
+                    ["Save Pose", "Click 📷 Pose (right-click to include switch states). Thumbnail is captured with labels hidden automatically"],
                     ["Reset Pose", "Click RP to zero all poses"],
                 ],
             },
@@ -1812,6 +1933,7 @@ class PSDModal {
                 rows: [
                     ["Zoom", "Mouse wheel"],
                     ["Pan", "Drag on empty area"],
+                    ["Reset", "RC button"],
                 ],
             },
             {
@@ -2162,45 +2284,123 @@ class PSDModal {
 
                 // 選択中SWポイントのgroupsリスト展開
                 if (isPtSel) {
+                    let slotOffset = 0;
                     for (let i = 0; i < pt.groups.length; i++) {
-                        const gid = pt.groups[i];
+                        const entry = pt.groups[i];
+                        const isPsdGroup    = entry?.type === 'psd_group';
+                        const isCustomGroup = entry?.type === 'custom_group';
+                        const cgObj = isCustomGroup
+                            ? this.state.customGroups.find(g => g.id === entry.id) ?? null
+                            : null;
+                        const leaves = isPsdGroup    ? getPsdGroupLeaves(entry.id, this.layerTree)
+                                     : isCustomGroup ? (cgObj?.layer_ids || [])
+                                     : null;
+                        const slotCount  = (isPsdGroup || isCustomGroup) ? (leaves?.length ?? 0) : 1;
+                        const isOrphaned = (isPsdGroup || isCustomGroup) && slotCount === 0;
                         const isGSel = i === this._selectedSwGroupIdx;
 
                         const gRow = document.createElement("div");
                         gRow.className = "psd-layer-item" + (isGSel ? " selected" : "");
-                        gRow.style.cssText = "padding:3px 10px 3px 32px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;";
+                        gRow.style.cssText = "padding:3px 10px 3px 32px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;"
+                            + (isOrphaned ? "background:rgba(180,40,40,0.18);outline:1px solid rgba(200,60,60,0.5);" : "");
 
                         const stepLabel = document.createElement("span");
-                        stepLabel.style.cssText = "color:#888;flex-shrink:0;width:28px;text-align:right;";
-                        stepLabel.textContent = `${i * 30}°`;
+                        stepLabel.style.cssText = "color:#888;flex-shrink:0;width:52px;text-align:right;font-size:10px;";
+                        if (isOrphaned) {
+                            stepLabel.textContent = "-";
+                            stepLabel.style.color = "#cc4444";
+                        } else if ((isPsdGroup || isCustomGroup) && slotCount > 1) {
+                            stepLabel.textContent = `${slotOffset * 30}°-${(slotOffset + slotCount - 1) * 30}°`;
+                        } else {
+                            stepLabel.textContent = `${slotOffset * 30}°`;
+                        }
+
+                        const entryId  = typeof entry === 'string' ? entry : entry?.id;
+                        const entryVal = isPsdGroup    ? `psd_group:${entryId}`
+                                       : isCustomGroup ? `cg:${entryId}`
+                                       : entryId;
 
                         const cgSel = document.createElement("select");
                         cgSel.style.cssText = "flex:1;background:#252535;border:1px solid #4a4a66;color:#cdd6f4;padding:2px 4px;border-radius:3px;font-size:11px;";
+
                         for (const cg2 of this.state.customGroups) {
                             const opt = document.createElement("option");
-                            opt.value = cg2.id; opt.textContent = `${t("groupPrefix")} ${cg2.name}`;
-                            if (cg2.id === gid) opt.selected = true;
+                            const cgVal = `cg:${cg2.id}`;
+                            opt.value = cgVal; opt.textContent = `${t("groupPrefix")} ${cg2.name}`;
+                            if (cgVal === entryVal) opt.selected = true;
                             cgSel.appendChild(opt);
                         }
+                        const addGroupOpts = (nodes) => {
+                            for (const n of nodes) {
+                                if (n.kind === 'group' && n.children) {
+                                    const opt = document.createElement("option");
+                                    const psdVal = `psd_group:${n.id}`;
+                                    opt.value = psdVal;
+                                    opt.textContent = `${t("psdGroupPrefix")} ${this.state.renamed[n.id] ?? n.name}`;
+                                    if (psdVal === entryVal) opt.selected = true;
+                                    cgSel.appendChild(opt);
+                                    addGroupOpts(n.children);
+                                }
+                            }
+                        };
+                        addGroupOpts(this.layerTree);
                         const addLayerOpts = (nodes) => {
                             for (const n of nodes) {
                                 if (n.kind === "group" && n.children) { addLayerOpts(n.children); continue; }
                                 const opt = document.createElement("option");
                                 opt.value = n.id; opt.textContent = `${t("layerPrefix")} ${this.state.renamed[n.id] ?? n.name}`;
-                                if (n.id === gid) opt.selected = true;
+                                if (n.id === entryVal) opt.selected = true;
                                 cgSel.appendChild(opt);
                             }
                         };
                         addLayerOpts(this.layerTree);
-                        cgSel.addEventListener("change", () => { pt.groups[i] = cgSel.value; this._drawPreview(); });
+
+                        cgSel.addEventListener("change", () => {
+                            const val = cgSel.value;
+                            if (val.startsWith('psd_group:')) {
+                                const gid2 = val.slice('psd_group:'.length);
+                                const tempGroups = [...pt.groups];
+                                tempGroups[i] = { type: 'psd_group', id: gid2 };
+                                if (countSwSlots(tempGroups, this.layerTree, this.state.customGroups) > 12) {
+                                    alert(t("maxGroupsReached"));
+                                    cgSel.value = entryVal;
+                                    return;
+                                }
+                                pt.groups[i] = { type: 'psd_group', id: gid2 };
+                            } else if (val.startsWith('cg:')) {
+                                const cgId = val.slice(3);
+                                const tempGroups = [...pt.groups];
+                                tempGroups[i] = { type: 'custom_group', id: cgId };
+                                if (countSwSlots(tempGroups, this.layerTree, this.state.customGroups) > 12) {
+                                    alert(t("maxGroupsReached"));
+                                    cgSel.value = entryVal;
+                                    return;
+                                }
+                                pt.groups[i] = { type: 'custom_group', id: cgId };
+                            } else {
+                                pt.groups[i] = val;
+                            }
+                            this._renderSwitchTab();
+                            this._drawPreview();
+                        });
                         cgSel.addEventListener("click", e => e.stopPropagation());
 
                         gRow.addEventListener("click", () => {
                             this._selectedSwGroupIdx = isGSel ? -1 : i;
                             this._renderSwitchTab();
                         });
-                        gRow.append(stepLabel, cgSel);
+                        if (isOrphaned) {
+                            const warn = document.createElement("span");
+                            warn.textContent = "⚠";
+                            warn.title = t("swGroupOrphaned");
+                            warn.style.cssText = "color:#cc4444;flex-shrink:0;font-size:11px;";
+                            gRow.append(stepLabel, cgSel, warn);
+                        } else {
+                            gRow.append(stepLabel, cgSel);
+                        }
                         this._switchListEl.appendChild(gRow);
+
+                        slotOffset += slotCount;
                     }
                 }
             }
@@ -2215,11 +2415,11 @@ class PSDModal {
         const swLayer = this.state.swLayers.find(l => l.id === info.swLayerId);
         const pt = swLayer?.points?.find(p => p.id === info.pointId);
         if (!pt) return;
-        if (pt.groups.length >= 12) { alert(t("maxGroupsReached")); return; }
+        if (countSwSlots(pt.groups, this.layerTree, this.state.customGroups) >= 12) { alert(t("maxGroupsReached")); return; }
         const firstCg = this.state.customGroups[0];
         const firstLayer = (() => { const find = ns => { for (const n of ns) { if (n.kind !== "group") return n; if (n.children) { const f = find(n.children); if (f) return f; } } return null; }; return find(this.layerTree); })();
         if (!firstCg && !firstLayer) { alert(t("noAssignableLayer")); return; }
-        pt.groups.push(firstCg ? firstCg.id : firstLayer.id);
+        pt.groups.push(firstCg ? { type: 'custom_group', id: firstCg.id } : firstLayer.id);
         this._selectedSwGroupIdx = pt.groups.length - 1;
         this._renderSwitchTab();
         this._drawPreview();
@@ -3333,12 +3533,7 @@ class PSDModal {
         const content = { psd_filename: psdFilename, layer_config: configObj };
         const node = this.node;
         if (node._nodeCanvas) {
-            const tc = document.createElement("canvas"); tc.width = 140; tc.height = 140;
-            const tx = tc.getContext("2d");
-            const fr = computeOutputFrame(node);
-            if (fr) tx.drawImage(node._nodeCanvas, fr.fx, fr.fy, fr.fw, fr.fh, 0, 0, 140, 140);
-            else    tx.drawImage(node._nodeCanvas, 0, 0, node._nodeCanvas.width, node._nodeCanvas.height, 0, 0, 140, 140);
-            content.thumbnail = tc.toDataURL("image/png");
+            content.thumbnail = captureThumbFromNode(node, 140, 140);
         }
         try {
             const res = await fetch("/psd_loader/library/models", {
@@ -3361,22 +3556,25 @@ class PSDModal {
             thumbnail:  null,
         };
         const node = this.node;
-        const mof = this._computeModalOutputFrame();
-        if (mof && mof.sw > 0 && mof.sh > 0) {
-            const thumbW = 140;
-            const thumbH = Math.max(1, Math.round(thumbW * mof.sh / mof.sw));
-            const tc = document.createElement("canvas"); tc.width = thumbW; tc.height = thumbH;
-            tc.getContext("2d").drawImage(this._previewCanvas, mof.sx, mof.sy, mof.sw, mof.sh, 0, 0, thumbW, thumbH);
-            content.thumbnail = tc.toDataURL("image/png");
-        } else if (node._nodeCanvas) {
-            const fr = computeOutputFrame(node);
-            const thumbW = 140;
-            const thumbH = fr ? Math.max(1, Math.round(thumbW * fr.fh / fr.fw)) : 88;
-            const tc = document.createElement("canvas"); tc.width = thumbW; tc.height = thumbH;
-            const tx = tc.getContext("2d");
-            if (fr) tx.drawImage(node._nodeCanvas, fr.fx, fr.fy, fr.fw, fr.fh, 0, 0, thumbW, thumbH);
-            else    tx.drawImage(node._nodeCanvas, 0, 0, node._nodeCanvas.width, node._nodeCanvas.height, 0, 0, thumbW, thumbH);
-            content.thumbnail = tc.toDataURL("image/png");
+        {
+            const savedCam   = { ...this._previewCam };
+            const wasShowing = this._showRigLabels;
+            this._previewCam    = { ...this._defaultPreviewCam };
+            this._showRigLabels = false;
+            this._drawPreview();
+            const mof = this._computeModalOutputFrame();
+            if (mof && mof.sw > 0 && mof.sh > 0) {
+                const thumbW = 140;
+                const thumbH = Math.max(1, Math.round(thumbW * mof.sh / mof.sw));
+                const tc = document.createElement("canvas"); tc.width = thumbW; tc.height = thumbH;
+                tc.getContext("2d").drawImage(this._previewCanvas, mof.sx, mof.sy, mof.sw, mof.sh, 0, 0, thumbW, thumbH);
+                content.thumbnail = tc.toDataURL("image/png");
+            } else if (node._nodeCanvas) {
+                content.thumbnail = captureThumbFromNode(node, 140);
+            }
+            this._previewCam    = savedCam;
+            this._showRigLabels = wasShowing;
+            this._drawPreview();
         }
         try {
             const res = await fetch("/psd_loader/library/poses", {
@@ -3404,22 +3602,25 @@ class PSDModal {
             thumbnail:  null,
         };
         const node = this.node;
-        const mof = this._computeModalOutputFrame();
-        if (mof && mof.sw > 0 && mof.sh > 0) {
-            const thumbW = 140;
-            const thumbH = Math.max(1, Math.round(thumbW * mof.sh / mof.sw));
-            const tc = document.createElement("canvas"); tc.width = thumbW; tc.height = thumbH;
-            tc.getContext("2d").drawImage(this._previewCanvas, mof.sx, mof.sy, mof.sw, mof.sh, 0, 0, thumbW, thumbH);
-            content.thumbnail = tc.toDataURL("image/png");
-        } else if (node._nodeCanvas) {
-            const fr = computeOutputFrame(node);
-            const thumbW = 140;
-            const thumbH = fr ? Math.max(1, Math.round(thumbW * fr.fh / fr.fw)) : 88;
-            const tc = document.createElement("canvas"); tc.width = thumbW; tc.height = thumbH;
-            const tx = tc.getContext("2d");
-            if (fr) tx.drawImage(node._nodeCanvas, fr.fx, fr.fy, fr.fw, fr.fh, 0, 0, thumbW, thumbH);
-            else    tx.drawImage(node._nodeCanvas, 0, 0, node._nodeCanvas.width, node._nodeCanvas.height, 0, 0, thumbW, thumbH);
-            content.thumbnail = tc.toDataURL("image/png");
+        {
+            const savedCam   = { ...this._previewCam };
+            const wasShowing = this._showRigLabels;
+            this._previewCam    = { ...this._defaultPreviewCam };
+            this._showRigLabels = false;
+            this._drawPreview();
+            const mof = this._computeModalOutputFrame();
+            if (mof && mof.sw > 0 && mof.sh > 0) {
+                const thumbW = 140;
+                const thumbH = Math.max(1, Math.round(thumbW * mof.sh / mof.sw));
+                const tc = document.createElement("canvas"); tc.width = thumbW; tc.height = thumbH;
+                tc.getContext("2d").drawImage(this._previewCanvas, mof.sx, mof.sy, mof.sw, mof.sh, 0, 0, thumbW, thumbH);
+                content.thumbnail = tc.toDataURL("image/png");
+            } else if (node._nodeCanvas) {
+                content.thumbnail = captureThumbFromNode(node, 140);
+            }
+            this._previewCam    = savedCam;
+            this._showRigLabels = wasShowing;
+            this._drawPreview();
         }
         try {
             const res = await fetch("/psd_loader/library/poses", {
@@ -4295,14 +4496,7 @@ app.registerExtension({
                     thumbnail:  null,
                 };
                 if (node._nodeCanvas) {
-                    const fr = computeOutputFrame(node);
-                    const thumbW = 140;
-                    const thumbH = fr ? Math.max(1, Math.round(thumbW * fr.fh / fr.fw)) : 88;
-                    const tc = document.createElement("canvas"); tc.width = thumbW; tc.height = thumbH;
-                    const tx = tc.getContext("2d");
-                    if (fr) tx.drawImage(node._nodeCanvas, fr.fx, fr.fy, fr.fw, fr.fh, 0, 0, thumbW, thumbH);
-                    else    tx.drawImage(node._nodeCanvas, 0, 0, node._nodeCanvas.width, node._nodeCanvas.height, 0, 0, thumbW, thumbH);
-                    snap.thumbnail = tc.toDataURL("image/png");
+                    snap.thumbnail = captureThumbFromNode(node, 140);
                 }
                 node._poseSnapshots = [snap];
                 try {
@@ -4335,14 +4529,7 @@ app.registerExtension({
                     thumbnail:  null,
                 };
                 if (node._nodeCanvas) {
-                    const fr = computeOutputFrame(node);
-                    const thumbW = 140;
-                    const thumbH = fr ? Math.max(1, Math.round(thumbW * fr.fh / fr.fw)) : 88;
-                    const tc = document.createElement("canvas"); tc.width = thumbW; tc.height = thumbH;
-                    const tx = tc.getContext("2d");
-                    if (fr) tx.drawImage(node._nodeCanvas, fr.fx, fr.fy, fr.fw, fr.fh, 0, 0, thumbW, thumbH);
-                    else    tx.drawImage(node._nodeCanvas, 0, 0, node._nodeCanvas.width, node._nodeCanvas.height, 0, 0, thumbW, thumbH);
-                    snap.thumbnail = tc.toDataURL("image/png");
+                    snap.thumbnail = captureThumbFromNode(node, 140);
                 }
                 node._poseSnapshots = [snap];
                 try {

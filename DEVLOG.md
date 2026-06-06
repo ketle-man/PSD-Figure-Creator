@@ -2,6 +2,87 @@
 
 ---
 
+## v2.19.0 — 2026-06-06
+
+### Overview
+Four improvements: (1) thumbnails for model/pose/pose+SW saves are now always captured with
+rig labels and the output-size label hidden, then the UI state is restored; (2) the Switch tab
+now accepts PSD folder groups as expandable per-layer slot entries; (3) custom groups in the
+Switch tab also expand per-layer (matching PSD folder behavior); (4) modal pose-save thumbnails
+no longer show a dark outer frame caused by camera zoom state.
+
+### Fixed
+- **Dark outer frame in modal pose-save thumbnails** — `_savePoseFromModal()` /
+  `_savePoseWithSwFromModal()` computed `_computeModalOutputFrame()` under the current camera
+  state; when the user had zoomed in, the output frame extended beyond the preview canvas
+  bounds and `drawImage` captured dark canvas background around the content:
+  - Before capture: `savedCam = { ...this._previewCam }`, then reset to
+    `{ ...this._defaultPreviewCam }` so the output frame is always within canvas bounds
+  - After capture: restore `this._previewCam = savedCam` and call `_drawPreview()` to return
+    to the user's camera state
+- **Rig labels and output-size label visible in saved thumbnails** — model, pose, and
+  pose+SW saves captured thumbnails while `node._showRigLabels` and the `512 × 512` frame
+  label were still active; replaced `createNodeCanvasNoLabel` (offscreen canvas — incorrectly
+  produced small/dark results) with `captureThumbFromNode`:
+  - Save `node._showRigLabels`; set to `false`
+  - Call `drawNodeCanvas(node, { skipFrameLabel: true })` — suppresses both rig labels and
+    the output-size text
+  - Crop and export; restore `node._showRigLabels`; call `drawNodeCanvas(node)` to redraw
+  - Modal saves (`_savePoseFromModal`, `_savePoseWithSwFromModal`) apply the same pattern
+    using `this._showRigLabels` + `this._drawPreview()`
+
+### Added
+- **PSD folder groups as Switch entries** (`[フォルダ]` / `[Folder]` / `[文件夹]`):
+  - `getPsdGroupLeaves(groupId, layerTree)` — recursively collects all non-group descendant
+    IDs from a PSD folder node
+  - `expandSwGroupEntries(groups, layerTree, customGroups)` — flattens `pt.groups` entries
+    into a per-slot list; `string` → 1 slot, `{type:'psd_group'}` → N leaf slots,
+    `{type:'custom_group'}` → N `layer_ids` slots
+  - `countSwSlots(groups, layerTree, customGroups)` — sums total slot count across all
+    entries (dissolved entries contribute 0)
+  - Switch tab dropdown includes `[フォルダ] <name>` options for every PSD group node in the
+    layer tree (recursive); stored as `{ type: 'psd_group', id }` in `pt.groups`
+  - Angle display: 1 slot → `"30°"`, multiple slots → `"0°–60°"` range notation
+  - Orphaned entry (PSD folder dissolved): red row background, ⚠ tooltip icon, angle shown
+    as `"-"`; entry must be deleted manually
+  - Max-slot guard (`> 12`) applies across all entry types combined
+  - i18n keys added: `psdGroupPrefix` (ja/en/zh), `swGroupOrphaned` (ja/en/zh)
+
+- **Custom groups as Switch entries** (`[グループ]` / `[Group]` / `[组]`) — expand per-layer:
+  - Previously custom groups were stored as plain string IDs in `pt.groups` and treated as
+    single slots with no actual rendering effect
+  - Now stored as `{ type: 'custom_group', id }`; `expandSwGroupEntries` expands each
+    custom group into per-`layer_ids` slots, identical to PSD folder expansion
+  - Dropdown option values changed from `cg2.id` to `cg:<id>` to distinguish from layer IDs;
+    change handler recognizes `cg:` prefix and writes `{ type: 'custom_group', id }` to
+    `pt.groups[i]`
+  - `_addSwGroup()` default new entry for custom groups is now `{ type:'custom_group', id }`
+    instead of a bare string
+  - Orphaned handling: if the custom group no longer exists in `this.state.customGroups`,
+    `slotCount = 0` → shown as orphaned with ⚠ (same as PSD folder)
+  - `renderLayersToCtx` and `drawRigOverlay` both pass `cgList` / `customGroups` to
+    `expandSwGroupEntries` so SW visibility switching works for all entry types
+
+### Changed
+- **`drawNodeCanvas` signature** — added `{ skipFrameLabel = false, targetCanvas = null }`
+  options object; output-size label block is wrapped in `if (!skipFrameLabel)` guard
+- **`captureThumbFromNode(node, thumbW, thumbH)`** — replaces the removed
+  `createNodeCanvasNoLabel`; uses the "temporarily disable → draw → capture → restore"
+  pattern on `node._nodeCanvas`; used by all 5 thumbnail capture paths:
+  model save (140×140), modal pose save fallback (140×auto), modal pose+SW save fallback,
+  quick pose save (node contextmenu), quick pose+SW save (node contextmenu)
+
+### Updated
+- **Help dialog** (`_showHelp`) — all three languages (ja/en/zh) updated:
+  - Switch tab section fully rewritten: entry types ([Group]/[Folder]/[Layer]), slot
+    expansion behavior, angle range notation, 12-slot max, orphaned ⚠ warning
+  - Pose mode: note added that thumbnails are captured with labels hidden automatically
+  - Layer tab: custom group creation description mentions SW tab per-layer expansion
+  - Camera (modal preview): RC reset button row added
+  - Chinese (zh): Switch tab and Pose mode sections added (were previously absent)
+
+---
+
 ## v2.18.0 — 2026-06-05
 
 ### Overview
