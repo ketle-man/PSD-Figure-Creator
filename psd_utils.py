@@ -27,6 +27,7 @@ def _build_layer_node(layer, path: list, id_map: dict) -> dict:
         "name": layer.name,
         "visible": layer.is_visible(),
         "kind": layer.kind.value if hasattr(layer.kind, "value") else str(layer.kind),
+        "clipping": bool(getattr(layer, "clipping", False)),
         "bbox": {
             "left": layer.left,
             "top": layer.top,
@@ -60,6 +61,10 @@ def _manual_composite(psd, effective_vis: dict, id_to_path: dict) -> Image.Image
     W, H = psd.width, psd.height
 
     def render(layer):
+        # クリッピングレイヤーはベースレイヤーの composite() が合成するためスキップ
+        if getattr(layer, "clipping", False):
+            return
+
         path_id = id_to_path.get(id(layer))
         is_vis = effective_vis.get(path_id, layer.is_visible()) if path_id else layer.is_visible()
         if not is_vis:
@@ -111,6 +116,9 @@ def _manual_composite_ordered(psd, effective_vis: dict, id_map: dict, layer_orde
         else:
             layer = id_map.get(lid)
             if layer is None:
+                return
+            # クリッピングレイヤーはベースレイヤーの composite() が合成するためスキップ
+            if getattr(layer, "clipping", False):
                 return
             try:
                 img = layer.composite()
@@ -225,7 +233,17 @@ def get_layer_image_by_id(psd_path: str, layer_id: str):
         current = children[idx]
 
     try:
-        img = current.composite()
+        img = None
+        # topil() で生ピクセルを取得する。composite() はクリッピングレイヤーを
+        # ベースレイヤーに合成するため、ベースレイヤー画像にクリッピングレイヤーが
+        # 二重描画される問題（→ リグが動いて見えない）を防ぐ。
+        if not current.is_group():
+            try:
+                img = current.topil()
+            except Exception:
+                pass
+        if img is None:
+            img = current.composite()
         if img is None:
             return None
         if img.mode != "RGBA":

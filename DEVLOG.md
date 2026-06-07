@@ -2,6 +2,183 @@
 
 ---
 
+## v2.23.0 — 2026-06-07
+
+### Overview
+Bundled a sample character PSD with a pre-configured model and two pose files so users can
+try the rigging system immediately after installation.
+
+### Added
+- **`user_data/sample_1.psd`** — sample character PSD (~2.3 MB).
+- **`user_data/models/sample.psd-model.json`** — fully configured model for `sample_1.psd`:
+  - R pivots on layers 2, 3, 4, 11
+  - MR points on layers 0, 1, 5, 9, 10, and sub-layers 6.1 / 7.1
+  - Parent hierarchy: layer 2 as root → 3 → 4 → children (eyes, mouth, accessories, etc.)
+  - SW layer `SW1` with a composite-mode slot referencing group 7 and leaf layer 8
+- **`user_data/poses/pose1.pose.json`** — sample pose 1 (head tilt + eye/mouth movement).
+- **`user_data/poses/pose2.pose.json`** — sample pose 2 (alternate expression).
+
+### Notes
+- `user_data/models/` and `user_data/poses/` are loaded automatically by the library panel.
+- `user_data/sample_1.psd` must be copied to `ComfyUI/input/psd/` manually before the model
+  can be loaded (the model JSON references `psd_filename: "sample_1.psd"`).
+
+---
+
+## v2.22.0 — 2026-06-07
+
+### Overview
+Two maintenance fixes: a DOM crash in inline-rename handlers, and a help-dialog gap where
+the Chinese Parent Tab section was missing entirely and all three languages lacked the
+clipping-layer caveat for parent setup.
+
+### Fixed
+- **Inline rename `replaceWith` crash** (`psd_loader.js`) — Four inline-rename handlers
+  (SW point name, custom-group name, SW layer name, `_inlineRename`) all shared the same
+  pattern: `nameEl.replaceWith(input)` on double-click, then `input.replaceWith(nameEl)` in
+  `commit()`. Pressing Enter called `commit()` which removed `input` from the DOM, then the
+  resulting `blur` event fired `commit()` a second time, causing
+  `NotFoundError: Failed to execute 'replaceWith' on 'Element'`. Fixed by adding
+  `if (!input.isConnected) return;` at the top of every `commit` closure — idempotent once
+  the input is detached.
+
+### Changed
+- **Help dialog — Parent Tab** (`_showHelp` in `psd_loader.js`):
+  - Added `⚠ クリッピングレイヤー` row to the Japanese **ペアレントタブ** section.
+  - Added `⚠ Clipping Layers` row to the English **Parent Tab** section.
+  - Added the entire **父级选项卡** section to the Chinese help — it was previously absent.
+    The new section includes setup instructions and the same clipping-layer caveat.
+  - Caveat text (all languages): clipping layers (✂) only follow the base layer's transform
+    if both layers share the same parent in the Parent tab; if only the base has a parent,
+    the clipping layer stays at its original canvas position and the mask alignment breaks.
+
+---
+
+## v2.21.0 — 2026-06-07
+
+### Overview
+Full clipping-mask support across the canvas preview and Capture output. Clipping layers
+(layers with the Photoshop "clip to layer below" flag) are now detected, propagated to the
+frontend, and rendered using an offscreen-canvas `source-atop` compositing technique.
+R/MR rigs placed on a clipping layer work correctly while the clipping shape is enforced by
+the base layer's alpha. Additionally, double-rendering of clipping layers in the server-side
+manual compositor is fixed.
+
+### Added
+- **`clipping` field on layer-tree nodes** — `server.py::_build_layer_tree` and
+  `psd_utils.py::_build_layer_node` now emit `"clipping": true|false` for every layer node.
+  This was the root cause of clipping not working: the frontend received nodes without the
+  flag, so all layers appeared as non-clipping.
+
+- **`renderChildren(children, skipCgMembers)`** — new function inside `renderLayersToCtx`
+  that replaces direct `for...of n.children` iteration. It scans the child array and groups
+  consecutive clipping layers with their base layer into a "clipping stack", delegating to
+  `renderClippingStack` when clips are found.
+
+- **`renderClippingStack(base, clipLayers, skipCgMembers)`** — offscreen-canvas compositor:
+  1. Creates a temporary canvas the same size as the main canvas.
+  2. Copies the current camera transform to the offscreen context via `ctx.getTransform()` /
+     `tmpCtx.setTransform()`.
+  3. Temporarily swaps the closed-over `ctx` variable to `tmpCtx`; all drawing functions
+     (`drawLeaf`, `applyRigTransform`) automatically target the offscreen canvas.
+  4. Draws the base layer, then draws each clipping layer with
+     `globalCompositeOperation = 'source-atop'` (clips to base's opaque pixels).
+  5. Resets the transform and composites the offscreen canvas onto the main canvas 1:1.
+  - R/MR rigs on clipping layers are fully applied inside `drawLeaf` before the
+    `source-atop` clip is enforced, so both transform and clipping work simultaneously.
+
+- **`✂` badge in layer panel** — `_mkLayerEl` appends a small `✂` span when `node.clipping`
+  is true, giving visual feedback in the Layers tab and the SW `+L` dropdown.
+
+- **i18n key `clippingLayerBadge`** added to ja / en / zh for the badge tooltip.
+
+### Fixed
+- **`get_layer_image_by_id` (canvas layer fetch)** — switched from `layer.composite()` to
+  `layer.topil()` for non-group layers. `composite()` embeds associated clipping layers into
+  the base layer's image, causing the clipping layer to appear twice on the canvas and making
+  R/MR rigs on those layers invisible. `topil()` returns raw pixel data only; clipping is
+  handled entirely by `renderClippingStack` at draw time.
+
+- **`_manual_composite` / `_manual_composite_ordered`** — clipping layers are now skipped
+  (`if getattr(layer, "clipping", False): return`). The base layer's `layer.composite()`
+  already includes its clipping layers, so iterating and drawing them separately caused
+  double rendering in the server-side compositor (both routes: `layer_order` and fallback).
+
+### Changed
+- **`renderLayersToCtx` signature** — parameter renamed from `ctx` to `ctxArg`; internal
+  `let ctx = ctxArg` allows the variable to be temporarily reassigned to the offscreen
+  context inside `renderClippingStack` without touching any call sites.
+- **`renderOneNode` group path** — the two inline `for (const child of n.children)` loops
+  are replaced by `renderChildren(n.children, skipCgMembers)`.
+
+---
+
+## v2.20.0 — 2026-06-07
+
+### Overview
+The single `+` button in the Switch tab is replaced by three distinct add buttons —
+`+L` (Layer), `+P` (Piece), `+C` (Composite) — each producing a different slot entry
+type. A new `mode: 'composite'` field on group/folder entries makes the entire group count
+as a single slot whose member layers are composited together, contrasting with
+`mode: 'piece'` (the existing per-layer expansion behavior). Each entry row now shows a
+color-coded type badge and the dropdown is filtered to show only relevant options for
+that entry type.
+
+### Added
+- **`+L` / `+P` / `+C` buttons** — replace the single `+` button in the Switch tab bar:
+  - **`+L` (Layer)** — adds an individual PSD layer as a string entry (1 slot); dropdown
+    shows leaf layers only
+  - **`+P` (Piece)** — adds a custom group or PSD folder group with `mode: 'piece'`
+    (default expansion behavior: 1 slot per member/leaf layer); dropdown shows groups and
+    folders only
+  - **`+C` (Composite)** — adds a custom group or PSD folder group with
+    `mode: 'composite'` (entire group = 1 slot; all member layers rendered together);
+    dropdown shows groups and folders only
+  - `makeAddSwBtn(text, tipKey, mode)` helper in `_buildDOM` creates all three buttons
+  - i18n keys added: `addLayerEntryTooltip`, `addPieceEntryTooltip`,
+    `addCompositeEntryTooltip`, `noAssignableGroup` (ja/en/zh)
+
+- **`mode: 'composite'` entry field** — new optional field on `psd_group` / `custom_group`
+  entries in `pt.groups`:
+  - Backward-compatible: entries without `mode` (all v2.19 data) continue to behave as
+    `'piece'`
+  - `expandSwGroupEntries` — composite branch returns a single slot
+    `{ id, entryIdx, mode:'composite', memberIds:[...] }` instead of per-leaf entries
+  - `countSwSlots` — composite entries always contribute 1, regardless of member count
+  - `renderLayersToCtx` SW loop — composite slot activates/deactivates all `memberIds`
+    together via a loop over `slot.memberIds`; piece slot still controls a single `id`
+
+- **Type badges in Switch tab entry rows** (`[L]` / `[P]` / `[C]`):
+  - Rendered as a small colored `<span>` to the left of the step-angle label
+  - L → blue (`#89b4fa` on `#2a2a4a`), P → cyan (`#89dceb` on `#152535`),
+    C → orange (`#fab387` on `#3a2515`)
+
+### Changed
+- **`_addSwGroup(mode)`** — gained `mode` parameter (`'layer'` | `'piece'` | `'composite'`):
+  - `'layer'`: pushes the first leaf layer ID (string) found in `layerTree`
+  - `'piece'` / `'composite'`: pushes `{ type:'custom_group'|'psd_group', id, mode }`
+    preferring the first custom group, falling back to the first PSD folder group
+- **`_renderSwitchTab` entry loop**:
+  - `slotCount` set to `1` for composite entries (was `leaves.length`)
+  - Orphan detection for composite: checks `leaves.length === 0` (group/folder empty
+    or deleted) rather than `slotCount === 0`
+  - Angle range label: range notation (`0°–60°`) suppressed for composite (always
+    single angle)
+  - Dropdown options filtered by entry type: string entries show layers only; object
+    entries show custom groups + PSD folder groups only
+  - Change handler preserves `entry.mode` when updating the selected group/folder:
+    `pt.groups[i] = { type, id, mode: entry?.mode ?? 'piece' }`
+
+### Schema addition
+```jsonc
+// pt.groups entry (new mode field)
+{ "type": "custom_group", "id": "...", "mode": "piece" }      // +P: per-layer slots
+{ "type": "psd_group",    "id": "...", "mode": "composite" }  // +C: 1 composite slot
+```
+Entries without `mode` default to `'piece'` (backward compatible with v2.19 data).
+
+---
+
 ## v2.19.0 — 2026-06-06
 
 ### Overview

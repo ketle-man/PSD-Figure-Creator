@@ -153,10 +153,19 @@ function expandSwGroupEntries(groups, layerTree, customGroups = []) {
             result.push({ id: entry, entryIdx: i });
         } else if (entry?.type === 'psd_group') {
             const leaves = getPsdGroupLeaves(entry.id, layerTree);
-            for (const id of leaves) result.push({ id, entryIdx: i });
+            if (entry.mode === 'composite') {
+                result.push({ id: entry.id, entryIdx: i, mode: 'composite', memberIds: leaves });
+            } else {
+                for (const id of leaves) result.push({ id, entryIdx: i });
+            }
         } else if (entry?.type === 'custom_group') {
             const cg = cgMap[entry.id];
-            for (const id of (cg?.layer_ids || [])) result.push({ id, entryIdx: i });
+            const ids = cg?.layer_ids || [];
+            if (entry.mode === 'composite') {
+                result.push({ id: entry.id, entryIdx: i, mode: 'composite', memberIds: ids });
+            } else {
+                for (const id of ids) result.push({ id, entryIdx: i });
+            }
         }
     }
     return result;
@@ -169,9 +178,9 @@ function countSwSlots(groups, layerTree, customGroups = []) {
     for (const entry of groups) {
         if (typeof entry === 'string') count++;
         else if (entry?.type === 'psd_group') {
-            count += getPsdGroupLeaves(entry.id, layerTree).length;
+            count += entry.mode === 'composite' ? 1 : getPsdGroupLeaves(entry.id, layerTree).length;
         } else if (entry?.type === 'custom_group') {
-            count += cgMap[entry.id]?.layer_ids?.length ?? 0;
+            count += entry.mode === 'composite' ? 1 : (cgMap[entry.id]?.layer_ids?.length ?? 0);
         }
     }
     return count;
@@ -180,7 +189,8 @@ function countSwSlots(groups, layerTree, customGroups = []) {
 // ================================================
 // レイヤー描画（カメラ変換なし、任意の ctx に描く）
 // ================================================
-function renderLayersToCtx(ctx, layers, imageMap, config) {
+function renderLayersToCtx(ctxArg, layers, imageMap, config) {
+    let ctx = ctxArg; // クリッピングスタック描画時にオフスクリーンへ一時スワップ可能
     const vis          = config?.visibility    || {};
     const cgList       = config?.custom_groups || [];
     const rigging      = config?.rigging       || {};
@@ -212,13 +222,18 @@ function renderLayersToCtx(ctx, layers, imageMap, config) {
             const normAngle = ((angle % range) + range) % range;
             const activeSlot = Math.min(Math.floor(normAngle / SW_STEP), n - 1);
             for (let i = 0; i < n; i++) {
-                const gid = flat[i].id;
+                const slot = flat[i];
+                const ids = slot.mode === 'composite' ? slot.memberIds : [slot.id];
                 if (i === activeSlot) {
-                    cgHidden.delete(gid);
-                    if (cgMap[gid]) { const unmark = g => { for (const lid of g.layer_ids) { cgHidden.delete(lid); if (cgMap[lid]) unmark(cgMap[lid]); } }; unmark(cgMap[gid]); }
+                    for (const id of ids) {
+                        cgHidden.delete(id);
+                        if (cgMap[id]) { const unmark = g => { for (const lid of g.layer_ids) { cgHidden.delete(lid); if (cgMap[lid]) unmark(cgMap[lid]); } }; unmark(cgMap[id]); }
+                    }
                 } else {
-                    cgHidden.add(gid);
-                    if (cgMap[gid]) markHidden(cgMap[gid]);
+                    for (const id of ids) {
+                        cgHidden.add(id);
+                        if (cgMap[id]) markHidden(cgMap[id]);
+                    }
                 }
             }
         }
@@ -293,14 +308,77 @@ function renderLayersToCtx(ctx, layers, imageMap, config) {
             const rig = rigging[n.id], p = pose[n.id], entry = imageMap[n.id];
             if (rig && p && entry && (p.angle || p.tx || p.ty || p.flipX || p.flipY)) {
                 ctx.save(); applyRigTransform(entry, rig, p);
-                for (const child of n.children) renderOneNode(child, skipCgMembers);
+                renderChildren(n.children, skipCgMembers);
                 ctx.restore();
             } else {
-                for (const child of n.children) renderOneNode(child, skipCgMembers);
+                renderChildren(n.children, skipCgMembers);
             }
         } else {
             drawLeaf(n);
         }
+    }
+
+    // グループの子を描画。clipping=true が続く場合はスタックとして一括処理する
+    function renderChildren(children, skipCgMembers) {
+        let i = 0;
+        while (i < children.length) {
+            const base = children[i];
+            const clips = [];
+            let j = i + 1;
+            while (j < children.length && children[j].clipping) {
+                clips.push(children[j]);
+                j++;
+            }
+            if (clips.length > 0) {
+                renderClippingStack(base, clips, skipCgMembers);
+            } else {
+                renderOneNode(base, skipCgMembers);
+            }
+            i = j;
+        }
+    }
+
+    // ベースレイヤー + クリッピングレイヤー群をオフスクリーンで合成して描画する。
+    // source-atop によりクリッピングレイヤーをベースの不透明領域のみに表示する。
+    // 各レイヤーに設定された R/MR リグは drawLeaf 経由で正常に適用される。
+    function renderClippingStack(base, clipLayers, skipCgMembers) {
+        if (cgHidden.has(base.id)) return;
+        const baseVis = vis[base.id];
+        if (!(baseVis !== undefined ? baseVis : base.visible)) return;
+
+        const mainCanvas = ctxArg.canvas;
+        const tmpCanvas  = document.createElement('canvas');
+        tmpCanvas.width  = mainCanvas.width;
+        tmpCanvas.height = mainCanvas.height;
+        const tmpCtx     = tmpCanvas.getContext('2d');
+
+        // 現在のトランスフォーム（カメラ変換含む）をオフスクリーンにコピー
+        const t = ctx.getTransform();
+        tmpCtx.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+
+        // ctx をオフスクリーンに一時スワップ — drawLeaf/applyRigTransform が自動的に tmpCtx を使う
+        const savedCtx = ctx;
+        ctx = tmpCtx;
+
+        drawLeaf(base);
+
+        tmpCtx.globalCompositeOperation = 'source-atop';
+        for (const clip of clipLayers) {
+            if (cgHidden.has(clip.id)) continue;
+            if (skipCgMembers && cgMemberIds.has(clip.id)) continue;
+            const clipVis = vis[clip.id];
+            if (!(clipVis !== undefined ? clipVis : clip.visible)) continue;
+            drawLeaf(clip);
+        }
+        tmpCtx.globalCompositeOperation = 'source-over';
+
+        ctx = savedCtx;
+
+        // トランスフォームをリセットして 1:1 でメインcanvas に転送
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(tmpCanvas, 0, 0);
+        ctx.restore();
     }
 
     // CG内のlayer_idsを逆順（末尾=下層）で描画
@@ -1547,17 +1625,25 @@ class PSDModal {
         this._switchGroupEl.style.cssText = "flex:1;overflow-y:auto;padding:4px 8px;font-size:11px;min-height:0;";
         const switchBar = document.createElement("div");
         switchBar.className = "psd-group-bar";
-        const addSwGroupBtn = document.createElement("button");
-        addSwGroupBtn.className = "psd-btn";
-        addSwGroupBtn.textContent = "+";
-        addSwGroupBtn.title = t("addGroupTooltip");
-        addSwGroupBtn.onclick = () => this._addSwGroup();
+        const makeAddSwBtn = (text, tipKey, mode) => {
+            const btn = document.createElement("button");
+            btn.className = "psd-btn";
+            btn.textContent = text;
+            btn.title = t(tipKey);
+            btn.onclick = () => this._addSwGroup(mode);
+            return btn;
+        };
         const delSwGroupBtn = document.createElement("button");
         delSwGroupBtn.className = "psd-btn";
         delSwGroupBtn.textContent = "−";
         delSwGroupBtn.title = t("deleteGroupTooltip");
         delSwGroupBtn.onclick = () => this._removeSwGroup();
-        switchBar.append(addSwGroupBtn, delSwGroupBtn);
+        switchBar.append(
+            makeAddSwBtn("+L", "addLayerEntryTooltip",     "layer"),
+            makeAddSwBtn("+P", "addPieceEntryTooltip",     "piece"),
+            makeAddSwBtn("+C", "addCompositeEntryTooltip", "composite"),
+            delSwGroupBtn
+        );
         switchTabContent.append(this._switchListEl, this._switchGroupEl, switchBar);
         this._selectedSwLayerId  = null;
         this._selectedSwPointInfo = null;
@@ -1734,6 +1820,7 @@ class PSDModal {
                 rows: [
                     ["ペアレント設定", "リスト上でアイテムを選択し ▲▼ で順序変更、▶ でインデント（子に）、◀ でアウトデント（親から独立）"],
                     ["目的", "子レイヤーは親レイヤーのトランスフォームを継承してポーズが合成される"],
+                    ["⚠ クリッピングレイヤー", "クリッピングレイヤー（✂）とそのベースレイヤーが一緒に動くには、両レイヤーに同じ親を設定してください。ベースレイヤーにのみ親を設定した場合、クリッピングレイヤーは追従しません"],
                 ],
             },
             {
@@ -1741,9 +1828,10 @@ class PSDModal {
                 rows: [
                     ["SWレイヤー選択", "左列でSWレイヤーを選択すると右列にSWポイントが表示される"],
                     ["SWポイント追加", "Setupモードで SW ボタンを選択してキャンバスをクリック"],
-                    ["エントリ追加/削除", "+ ボタンでエントリを追加、選択して − ボタンで削除"],
-                    ["エントリ種別", "[グループ] カスタムグループ / [フォルダ] PSDフォルダ / [レイヤー] 個別レイヤー — ドロップダウンで切り替え可能"],
-                    ["スロット展開", "[グループ][フォルダ]はレイヤー数分のスロットに自動展開。例: 3レイヤーのグループ = 3スロット（0°・30°・60°）"],
+                    ["エントリ追加", "+L: 個別レイヤーを1スロットとして追加 / +P: グループ/フォルダをメンバーごとに展開して追加（Piece） / +C: グループ/フォルダ全体を合成して1スロットとして追加（Composite）"],
+                    ["エントリ削除", "エントリを選択して − ボタンで削除"],
+                    ["バッジ", "[L] 個別レイヤー（1スロット） / [P] Pieceグループ（メンバー数スロット） / [C] Compositeグループ（常に1スロット）"],
+                    ["スロット展開", "[P]はメンバーレイヤー数分のスロットに展開。例: 3レイヤーグループ = 3スロット（0°・30°・60°）。[C]は常に1スロット"],
                     ["角度表示", "1スロット: 「30°」、複数スロット: 「0°-60°」のように範囲表示"],
                     ["最大スロット数", "全エントリの合計スロット数が12まで"],
                     ["⚠ 孤立エントリ", "グループ/フォルダが解除・削除されると赤背景と ⚠ で表示 → 該当エントリを削除してください"],
@@ -1812,13 +1900,22 @@ class PSDModal {
                 ],
             },
             {
+                title: "父级选项卡",
+                rows: [
+                    ["父级设置", "在列表中选择项目，用 ▲▼ 调整顺序，▶ 缩进（设为子级），◀ 取消缩进（独立）"],
+                    ["效果", "子图层继承父图层的变换，用于姿势合成"],
+                    ["⚠ 剪贴蒙版图层", "剪贴蒙版图层（✂）要随基础图层一起移动，两者需设置相同的父级。若仅基础图层设置了父级，剪贴蒙版图层不会跟随"],
+                ],
+            },
+            {
                 title: "切换选项卡",
                 rows: [
                     ["选择SW图层", "在左列选择SW图层，右列显示SW点"],
                     ["添加SW点", "在Setup模式下选择SW后点击画布"],
-                    ["添加/删除条目", "点击 + 添加条目，选中后点击 − 删除"],
-                    ["条目类型", "[组] 自定义组 / [文件夹] PSD文件夹 / [图层] 单个图层 — 可通过下拉菜单切换"],
-                    ["插槽展开", "[组][文件夹]自动按内含图层数展开。例: 3图层的组 = 3个插槽（0°・30°・60°）"],
+                    ["添加条目", "+L: 将单个图层添加为1个槽位 / +P: 将组/文件夹按图层逐一展开（Piece） / +C: 将组/文件夹整体合成为1个槽位（Composite）"],
+                    ["删除条目", "选中条目后点击 − 删除"],
+                    ["标记", "[L] 单个图层（1槽位） / [P] Piece组（成员数槽位） / [C] Composite组（始终1槽位）"],
+                    ["插槽展开", "[P]按成员图层数展开。例: 3图层的组 = 3个插槽（0°・30°・60°）。[C]始终为1个插槽"],
                     ["最大插槽数", "所有条目的插槽总数最多12个"],
                     ["⚠ 孤立条目", "组/文件夹被解除时显示红色背景和 ⚠ → 请删除该条目"],
                     ["动作", "SW点手柄角度切换当前插槽（1插槽 = 30°）"],
@@ -1890,6 +1987,7 @@ class PSDModal {
                 rows: [
                     ["Parent Setup", "Select an item, use ▲▼ to reorder, ▶ to indent (make child), ◀ to outdent"],
                     ["Effect", "Child layers inherit the parent's transform for pose compositing"],
+                    ["⚠ Clipping Layers", "For a clipping layer (✂) to follow its base layer, both must share the same parent. If only the base layer has a parent set, the clipping layer will not follow it"],
                 ],
             },
             {
@@ -1897,9 +1995,10 @@ class PSDModal {
                 rows: [
                     ["Select SW Layer", "Pick a SW layer in the left column to see its SW points"],
                     ["Add SW Point", "In Setup mode, select SW then click the canvas"],
-                    ["Add / Remove Entry", "Click + to add an entry; select it and click − to remove"],
-                    ["Entry Types", "[Group] Custom group / [Folder] PSD folder / [Layer] Individual layer — switch via dropdown"],
-                    ["Slot Expansion", "[Group] and [Folder] expand into one slot per contained layer. e.g. a 3-layer group = 3 slots (0°, 30°, 60°)"],
+                    ["Add Entry", "+L: add individual layer as 1 slot / +P: add group/folder expanded per-layer (Piece) / +C: add group/folder composited as 1 slot (Composite)"],
+                    ["Remove Entry", "Select an entry and click − to remove"],
+                    ["Badges", "[L] individual layer (1 slot) / [P] Piece group (N slots) / [C] Composite group (always 1 slot)"],
+                    ["Slot Expansion", "[P] expands per member layer. e.g. 3-layer group = 3 slots (0°, 30°, 60°). [C] is always 1 slot"],
                     ["Angle Display", "Single slot: '30°' / Multiple slots: '0°–60°' range notation"],
                     ["Max Slots", "Total slots across all entries: 12"],
                     ["⚠ Orphaned Entry", "Shown in red with ⚠ when the referenced group/folder no longer exists — delete the entry"],
@@ -2251,6 +2350,7 @@ class PSDModal {
                     input.style.cssText = "width:90px;background:#313244;border:1px solid #89b4fa;border-radius:3px;color:#cdd6f4;padding:1px 6px;font-size:12px;outline:none;";
                     nameEl.replaceWith(input); input.focus(); input.select();
                     const commit = () => {
+                        if (!input.isConnected) return;
                         const v = input.value.trim(); if (v) pt.name = v;
                         nameEl.textContent = pt.name; input.replaceWith(nameEl); this._drawPreview();
                     };
@@ -2289,14 +2389,18 @@ class PSDModal {
                         const entry = pt.groups[i];
                         const isPsdGroup    = entry?.type === 'psd_group';
                         const isCustomGroup = entry?.type === 'custom_group';
+                        const isComposite   = (isPsdGroup || isCustomGroup) && entry?.mode === 'composite';
                         const cgObj = isCustomGroup
                             ? this.state.customGroups.find(g => g.id === entry.id) ?? null
                             : null;
                         const leaves = isPsdGroup    ? getPsdGroupLeaves(entry.id, this.layerTree)
                                      : isCustomGroup ? (cgObj?.layer_ids || [])
                                      : null;
-                        const slotCount  = (isPsdGroup || isCustomGroup) ? (leaves?.length ?? 0) : 1;
-                        const isOrphaned = (isPsdGroup || isCustomGroup) && slotCount === 0;
+                        const slotCount = isComposite ? 1
+                                        : (isPsdGroup || isCustomGroup) ? (leaves?.length ?? 0) : 1;
+                        const isOrphaned = (isPsdGroup || isCustomGroup) && (
+                            isComposite ? (leaves?.length ?? 0) === 0 : slotCount === 0
+                        );
                         const isGSel = i === this._selectedSwGroupIdx;
 
                         const gRow = document.createElement("div");
@@ -2304,12 +2408,22 @@ class PSDModal {
                         gRow.style.cssText = "padding:3px 10px 3px 32px;cursor:pointer;font-size:11px;display:flex;align-items:center;gap:4px;"
                             + (isOrphaned ? "background:rgba(180,40,40,0.18);outline:1px solid rgba(200,60,60,0.5);" : "");
 
+                        const typeBadge = document.createElement("span");
+                        typeBadge.style.cssText = "flex-shrink:0;font-size:10px;font-weight:bold;padding:1px 3px;border-radius:2px;margin-right:2px;";
+                        if (typeof entry === 'string') {
+                            typeBadge.textContent = "L"; typeBadge.style.background = "#2a2a4a"; typeBadge.style.color = "#89b4fa";
+                        } else if (isComposite) {
+                            typeBadge.textContent = "C"; typeBadge.style.background = "#3a2515"; typeBadge.style.color = "#fab387";
+                        } else {
+                            typeBadge.textContent = "P"; typeBadge.style.background = "#152535"; typeBadge.style.color = "#89dceb";
+                        }
+
                         const stepLabel = document.createElement("span");
                         stepLabel.style.cssText = "color:#888;flex-shrink:0;width:52px;text-align:right;font-size:10px;";
                         if (isOrphaned) {
                             stepLabel.textContent = "-";
                             stepLabel.style.color = "#cc4444";
-                        } else if ((isPsdGroup || isCustomGroup) && slotCount > 1) {
+                        } else if (!isComposite && (isPsdGroup || isCustomGroup) && slotCount > 1) {
                             stepLabel.textContent = `${slotOffset * 30}°-${(slotOffset + slotCount - 1) * 30}°`;
                         } else {
                             stepLabel.textContent = `${slotOffset * 30}°`;
@@ -2323,60 +2437,67 @@ class PSDModal {
                         const cgSel = document.createElement("select");
                         cgSel.style.cssText = "flex:1;background:#252535;border:1px solid #4a4a66;color:#cdd6f4;padding:2px 4px;border-radius:3px;font-size:11px;";
 
-                        for (const cg2 of this.state.customGroups) {
-                            const opt = document.createElement("option");
-                            const cgVal = `cg:${cg2.id}`;
-                            opt.value = cgVal; opt.textContent = `${t("groupPrefix")} ${cg2.name}`;
-                            if (cgVal === entryVal) opt.selected = true;
-                            cgSel.appendChild(opt);
-                        }
-                        const addGroupOpts = (nodes) => {
-                            for (const n of nodes) {
-                                if (n.kind === 'group' && n.children) {
+                        if (typeof entry === 'string') {
+                            // +L エントリ: レイヤーのみ
+                            const addLayerOpts = (nodes) => {
+                                for (const n of nodes) {
+                                    if (n.kind === "group" && n.children) { addLayerOpts(n.children); continue; }
                                     const opt = document.createElement("option");
-                                    const psdVal = `psd_group:${n.id}`;
-                                    opt.value = psdVal;
-                                    opt.textContent = `${t("psdGroupPrefix")} ${this.state.renamed[n.id] ?? n.name}`;
-                                    if (psdVal === entryVal) opt.selected = true;
+                                    const clipMark = n.clipping ? " ✂" : "";
+                                    opt.value = n.id; opt.textContent = `${t("layerPrefix")} ${this.state.renamed[n.id] ?? n.name}${clipMark}`;
+                                    if (n.id === entryVal) opt.selected = true;
                                     cgSel.appendChild(opt);
-                                    addGroupOpts(n.children);
                                 }
-                            }
-                        };
-                        addGroupOpts(this.layerTree);
-                        const addLayerOpts = (nodes) => {
-                            for (const n of nodes) {
-                                if (n.kind === "group" && n.children) { addLayerOpts(n.children); continue; }
+                            };
+                            addLayerOpts(this.layerTree);
+                        } else {
+                            // +P / +C エントリ: グループ/フォルダのみ
+                            for (const cg2 of this.state.customGroups) {
                                 const opt = document.createElement("option");
-                                opt.value = n.id; opt.textContent = `${t("layerPrefix")} ${this.state.renamed[n.id] ?? n.name}`;
-                                if (n.id === entryVal) opt.selected = true;
+                                const cgVal = `cg:${cg2.id}`;
+                                opt.value = cgVal; opt.textContent = `${t("groupPrefix")} ${cg2.name}`;
+                                if (cgVal === entryVal) opt.selected = true;
                                 cgSel.appendChild(opt);
                             }
-                        };
-                        addLayerOpts(this.layerTree);
+                            const addGroupOpts = (nodes) => {
+                                for (const n of nodes) {
+                                    if (n.kind === 'group' && n.children) {
+                                        const opt = document.createElement("option");
+                                        const psdVal = `psd_group:${n.id}`;
+                                        opt.value = psdVal;
+                                        opt.textContent = `${t("psdGroupPrefix")} ${this.state.renamed[n.id] ?? n.name}`;
+                                        if (psdVal === entryVal) opt.selected = true;
+                                        cgSel.appendChild(opt);
+                                        addGroupOpts(n.children);
+                                    }
+                                }
+                            };
+                            addGroupOpts(this.layerTree);
+                        }
 
                         cgSel.addEventListener("change", () => {
                             const val = cgSel.value;
+                            const entryMode = entry?.mode ?? 'piece';
                             if (val.startsWith('psd_group:')) {
                                 const gid2 = val.slice('psd_group:'.length);
                                 const tempGroups = [...pt.groups];
-                                tempGroups[i] = { type: 'psd_group', id: gid2 };
+                                tempGroups[i] = { type: 'psd_group', id: gid2, mode: entryMode };
                                 if (countSwSlots(tempGroups, this.layerTree, this.state.customGroups) > 12) {
                                     alert(t("maxGroupsReached"));
                                     cgSel.value = entryVal;
                                     return;
                                 }
-                                pt.groups[i] = { type: 'psd_group', id: gid2 };
+                                pt.groups[i] = { type: 'psd_group', id: gid2, mode: entryMode };
                             } else if (val.startsWith('cg:')) {
                                 const cgId = val.slice(3);
                                 const tempGroups = [...pt.groups];
-                                tempGroups[i] = { type: 'custom_group', id: cgId };
+                                tempGroups[i] = { type: 'custom_group', id: cgId, mode: entryMode };
                                 if (countSwSlots(tempGroups, this.layerTree, this.state.customGroups) > 12) {
                                     alert(t("maxGroupsReached"));
                                     cgSel.value = entryVal;
                                     return;
                                 }
-                                pt.groups[i] = { type: 'custom_group', id: cgId };
+                                pt.groups[i] = { type: 'custom_group', id: cgId, mode: entryMode };
                             } else {
                                 pt.groups[i] = val;
                             }
@@ -2394,9 +2515,9 @@ class PSDModal {
                             warn.textContent = "⚠";
                             warn.title = t("swGroupOrphaned");
                             warn.style.cssText = "color:#cc4444;flex-shrink:0;font-size:11px;";
-                            gRow.append(stepLabel, cgSel, warn);
+                            gRow.append(typeBadge, stepLabel, cgSel, warn);
                         } else {
-                            gRow.append(stepLabel, cgSel);
+                            gRow.append(typeBadge, stepLabel, cgSel);
                         }
                         this._switchListEl.appendChild(gRow);
 
@@ -2409,17 +2530,27 @@ class PSDModal {
         this._switchGroupEl.innerHTML = "";
     }
 
-    _addSwGroup() {
+    _addSwGroup(mode) {
         const info = this._selectedSwPointInfo;
         if (!info) return;
         const swLayer = this.state.swLayers.find(l => l.id === info.swLayerId);
         const pt = swLayer?.points?.find(p => p.id === info.pointId);
         if (!pt) return;
         if (countSwSlots(pt.groups, this.layerTree, this.state.customGroups) >= 12) { alert(t("maxGroupsReached")); return; }
-        const firstCg = this.state.customGroups[0];
-        const firstLayer = (() => { const find = ns => { for (const n of ns) { if (n.kind !== "group") return n; if (n.children) { const f = find(n.children); if (f) return f; } } return null; }; return find(this.layerTree); })();
-        if (!firstCg && !firstLayer) { alert(t("noAssignableLayer")); return; }
-        pt.groups.push(firstCg ? { type: 'custom_group', id: firstCg.id } : firstLayer.id);
+        if (mode === 'layer') {
+            const find = ns => { for (const n of ns) { if (n.kind !== "group") return n; if (n.children) { const f = find(n.children); if (f) return f; } } return null; };
+            const firstLayer = find(this.layerTree);
+            if (!firstLayer) { alert(t("noAssignableLayer")); return; }
+            pt.groups.push(firstLayer.id);
+        } else {
+            const firstCg = this.state.customGroups[0];
+            const findGrp = ns => { for (const n of ns) { if (n.kind === 'group' && n.children) return n; if (n.children) { const f = findGrp(n.children); if (f) return f; } } return null; };
+            const firstPsdGroup = findGrp(this.layerTree);
+            if (!firstCg && !firstPsdGroup) { alert(t("noAssignableGroup")); return; }
+            pt.groups.push(firstCg
+                ? { type: 'custom_group', id: firstCg.id, mode }
+                : { type: 'psd_group', id: firstPsdGroup.id, mode });
+        }
         this._selectedSwGroupIdx = pt.groups.length - 1;
         this._renderSwitchTab();
         this._drawPreview();
@@ -2993,6 +3124,14 @@ class PSDModal {
 
         const icon = document.createElement("span"); icon.className = "kind-icon"; icon.textContent = node.kind === "group" ? "📁" : "🖼"; row.appendChild(icon);
 
+        if (node.clipping) {
+            const clipBadge = document.createElement("span");
+            clipBadge.textContent = "✂";
+            clipBadge.title = t("clippingLayerBadge");
+            clipBadge.style.cssText = "font-size:9px;color:#f9e2af;opacity:0.8;margin-right:2px;cursor:default;";
+            row.appendChild(clipBadge);
+        }
+
         const nameEl = document.createElement("span"); nameEl.className = "layer-name";
         nameEl.textContent = this.state.renamed[node.id] ?? node.name;
         nameEl.title = t("dblClickToRename");
@@ -3064,7 +3203,7 @@ class PSDModal {
             input.value = cg.name;
             input.style.cssText = "width:120px;background:#313244;border:1px solid #89b4fa;border-radius:3px;color:#f38ba8;padding:1px 6px;font-size:12px;outline:none;";
             nameEl.replaceWith(input); input.focus(); input.select();
-            const commit = () => { const v = input.value.trim(); if (v) cg.name = v; nameEl.textContent = `${t("customPrefix")} ${cg.name}`; input.replaceWith(nameEl); };
+            const commit = () => { if (!input.isConnected) return; const v = input.value.trim(); if (v) cg.name = v; nameEl.textContent = `${t("customPrefix")} ${cg.name}`; input.replaceWith(nameEl); };
             input.addEventListener("blur", commit);
             input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") input.replaceWith(nameEl); });
         });
@@ -3113,6 +3252,7 @@ class PSDModal {
             input.style.cssText = "width:120px;background:#313244;border:1px solid #7c3aed;border-radius:3px;color:#a78bfa;padding:1px 6px;font-size:12px;outline:none;";
             nameEl.replaceWith(input); input.focus(); input.select();
             const commit = () => {
+                if (!input.isConnected) return;
                 const v = input.value.trim(); if (v) swLayer.name = v;
                 nameEl.textContent = `${t("swPrefix")} ${swLayer.name}`; input.replaceWith(nameEl);
             };
@@ -3199,6 +3339,7 @@ class PSDModal {
         const input = document.createElement("input"); input.value = orig;
         nameEl.replaceWith(input); input.focus(); input.select();
         const commit = () => {
+            if (!input.isConnected) return;
             const v = input.value.trim();
             if (v && v !== orig) this.state.renamed[nodeId] = v;
             nameEl.textContent = this.state.renamed[nodeId] ?? orig;

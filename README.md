@@ -14,7 +14,7 @@ and compositing the result as `IMAGE` + `MASK` outputs.
 - **Rigging system** — place control points on layers directly on the canvas:
   - **R** (blue) — rotation only
   - **MR** (red/orange) — move + rotate
-  - **SW** (green) — switch: rotate a handle to step through up to 12 slots; register individual layers, custom groups `[Group]`, or PSD folder groups `[Folder]` (groups and folders expand per-layer into multiple slots)
+  - **SW** (green) — switch: rotate a handle to step through up to 12 slots; use **+L** to add an individual layer (1 slot), **+P** to add a group/folder expanded per-layer (Piece, N slots), or **+C** to add a group/folder composited as one (Composite, 1 slot)
 - **Setup mode / Pose mode** — configure rigs in setup mode, animate in pose mode
 - **Library** — save/load named model files (`.psd-model.json`) and pose files
 - **Background options** — checker pattern / solid color / local image / upstream `IMAGE` node
@@ -66,6 +66,24 @@ pip install psd-tools
 ```
 
 Restart ComfyUI. The node appears under **image/psd → PSD Figure Creator**.
+
+---
+
+## Sample Data
+
+A ready-to-use sample is bundled in the `user_data/` directory:
+
+| File | Description |
+|---|---|
+| `user_data/sample_1.psd` | Sample character PSD |
+| `user_data/models/sample.psd-model.json` | Pre-configured rig (R/MR points, parent hierarchy, SW switch) |
+| `user_data/poses/pose1.pose.json` | Sample pose 1 |
+| `user_data/poses/pose2.pose.json` | Sample pose 2 |
+
+**To use the sample:**
+1. Copy `user_data/sample_1.psd` to `ComfyUI/input/psd/`
+2. Open the **Editor** and click **📂 model** — `sample` will appear in the library
+3. Load the model; sample poses are available in the pose library
 
 > **Upgrading from PSD Loader (≤ v2.16):**  
 > If your workflow JSON contains `"PSDLoader"`, replace it with `"PSDFigureCreator"`.
@@ -131,13 +149,21 @@ Drag the origin in setup mode to reposition; drag the handle to adjust radius an
 
 **Slot entry types** (configured in the Switch tab):
 
-| Entry | Label | Slots |
-|---|---|---|
-| Individual PSD layer | `[Layer]` | 1 slot |
-| Custom group | `[Group]` | 1 slot per member layer |
-| PSD folder group | `[Folder]` | 1 slot per leaf layer |
+| Button | Entry | Badge | Slots |
+|---|---|---|---|
+| `+L` | Individual PSD layer | `[L]` | 1 slot |
+| `+P` | Custom group or PSD folder (Piece) | `[P]` | 1 slot per member / leaf layer |
+| `+C` | Custom group or PSD folder (Composite) | `[C]` | 1 slot (all members rendered together) |
 
 A slot entry whose group or folder has been deleted shows a red row background and a ⚠ icon (orphaned). Delete it manually before adding new entries.
+
+---
+
+## Clipping Layers
+
+Layers with the Photoshop "clip to layer below" flag appear with a **✂** badge in the layer panel and SW `+L` dropdown. The canvas compositor renders them using `source-atop` blending: each clipping layer is masked to the opaque area of its base layer (the layer directly below it). R/MR rigs placed on a clipping layer work normally within that masked region.
+
+> **⚠ Parent setup note:** If the base layer has a rig that moves it, the clipping layer must share the **same parent** (configured in the Parent tab) to follow along. Without a matching parent, the clipping layer stays at its original canvas position while the base moves, breaking the mask alignment.
 
 ---
 
@@ -196,9 +222,10 @@ psd-image-loader/
       "x": 512, "y": 512,
       "radius": 60, "angle": 0,
       "groups": [
-        "<layerId>",                               // individual PSD layer — 1 slot
-        { "type": "custom_group", "id": "..." },   // custom group — 1 slot per member layer
-        { "type": "psd_group",    "id": "..." }    // PSD folder group — 1 slot per leaf layer
+        "<layerId>",                                              // +L — individual layer, 1 slot
+        { "type": "custom_group", "id": "...", "mode": "piece" },     // +P — 1 slot per member layer
+        { "type": "psd_group",    "id": "...", "mode": "composite" }  // +C — 1 slot (composited)
+        // mode defaults to "piece" when omitted (backward compatible)
       ]
     }]
   }]

@@ -22,6 +22,7 @@ def _build_layer_tree(psd) -> list:
             "name": layer.name,
             "visible": layer.is_visible(),
             "kind": layer.kind.value if hasattr(layer.kind, "value") else str(layer.kind),
+            "clipping": bool(getattr(layer, "clipping", False)),
             "bbox": {
                 "left": layer.left,
                 "top": layer.top,
