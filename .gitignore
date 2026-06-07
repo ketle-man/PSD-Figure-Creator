@@ -17,7 +17,7 @@ venv/
 # ComfyUI runtime artifacts
 input/
 output/
-models/
+/models/
 
 # Archives
 *.rar
