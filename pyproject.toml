@@ -1,0 +1,13 @@
+[project]
+name = "psd-figure-creator"
+description = "Load a PSD file, place rig points on its layers, pose the figure interactively, and output IMAGE + MASK. Features layer viewer, custom groups, R/MR/SW rigging, clipping-mask support, and a model/pose library."
+version = "0.4.0"
+license = {file = "LICENSE"}
+
+[project.urls]
+Repository = "https://github.com/ketle-man/PSD-Figure-Creator"
+
+[tool.comfy]
+PublisherId = "statsu"
+DisplayName = "PSD Figure Creator"
+Icon = "https://raw.githubusercontent.com/ketle-man/PSD-Figure-Creator/master/docs/thumb.png"
