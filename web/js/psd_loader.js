@@ -172,23 +172,17 @@ function expandSwGroupEntries(groups, layerTree, customGroups = []) {
 }
 
 function countSwSlots(groups, layerTree, customGroups = []) {
-    const cgMap = {};
-    for (const cg of customGroups) cgMap[cg.id] = cg;
-    let count = 0;
-    for (const entry of groups) {
-        if (typeof entry === 'string') count++;
-        else if (entry?.type === 'psd_group') {
-            count += entry.mode === 'composite' ? 1 : getPsdGroupLeaves(entry.id, layerTree).length;
-        } else if (entry?.type === 'custom_group') {
-            count += entry.mode === 'composite' ? 1 : (cgMap[entry.id]?.layer_ids?.length ?? 0);
-        }
-    }
-    return count;
+    return expandSwGroupEntries(groups, layerTree, customGroups).length;
 }
 
 // ================================================
 // レイヤー描画（カメラ変換なし、任意の ctx に描く）
 // ================================================
+
+// クリッピングスタック合成用オフスクリーンcanvas。
+// _drawPreview はドラッグ中 mousemove ごとに走るため、毎回の生成を避けてキャッシュする
+let _clipTmpCanvas = null;
+
 function renderLayersToCtx(ctxArg, layers, imageMap, config) {
     let ctx = ctxArg; // クリッピングスタック描画時にオフスクリーンへ一時スワップ可能
     const vis          = config?.visibility    || {};
@@ -343,14 +337,18 @@ function renderLayersToCtx(ctxArg, layers, imageMap, config) {
     // 各レイヤーに設定された R/MR リグは drawLeaf 経由で正常に適用される。
     function renderClippingStack(base, clipLayers, skipCgMembers) {
         if (cgHidden.has(base.id)) return;
+        if (skipCgMembers && cgMemberIds.has(base.id)) return;
         const baseVis = vis[base.id];
         if (!(baseVis !== undefined ? baseVis : base.visible)) return;
 
         const mainCanvas = ctxArg.canvas;
-        const tmpCanvas  = document.createElement('canvas');
-        tmpCanvas.width  = mainCanvas.width;
-        tmpCanvas.height = mainCanvas.height;
-        const tmpCtx     = tmpCanvas.getContext('2d');
+        if (!_clipTmpCanvas) _clipTmpCanvas = document.createElement('canvas');
+        const tmpCanvas = _clipTmpCanvas;
+        if (tmpCanvas.width  !== mainCanvas.width)  tmpCanvas.width  = mainCanvas.width;
+        if (tmpCanvas.height !== mainCanvas.height) tmpCanvas.height = mainCanvas.height;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        tmpCtx.setTransform(1, 0, 0, 1, 0, 0);
+        tmpCtx.clearRect(0, 0, tmpCanvas.width, tmpCanvas.height);
 
         // 現在のトランスフォーム（カメラ変換含む）をオフスクリーンにコピー
         const t = ctx.getTransform();
@@ -381,26 +379,32 @@ function renderLayersToCtx(ctxArg, layers, imageMap, config) {
         ctx.restore();
     }
 
+    // ID列（下層→上層）を描画する。連続する通常ノードは renderChildren に
+    // まとめて渡し、ルート直下やCG内でもクリッピングスタックを成立させる
+    function renderIdList(ids, skipCgMembers, skipCgMemberEntries) {
+        let run = [];
+        const flushRun = () => { if (run.length) { renderChildren(run, skipCgMembers); run = []; } };
+        for (const id of ids) {
+            if (skipCgMemberEntries && cgMemberIds.has(id)) continue; // CGメンバーはCG経由で描画済み
+            if (cgMap[id]) { flushRun(); renderCg(cgMap[id]); }
+            else { const node = nodeMap[id]; if (node) run.push(node); }
+        }
+        flushRun();
+    }
+
     // CG内のlayer_idsを逆順（末尾=下層）で描画
     function renderCg(cg) {
         if (cgHidden.has(cg.id) || cg.visible === false) return;
-        for (const lid of [...cg.layer_ids].reverse()) {
-            if (cgMap[lid]) renderCg(cgMap[lid]);
-            else { const node = nodeMap[lid]; if (node) renderOneNode(node, false); }
-        }
+        renderIdList([...cg.layer_ids].reverse(), false, false);
     }
 
     const cgOrder = config?.cg_order;
     if (cgOrder && cgOrder.length > 0) {
         // cgOrder[0]=最上位 → 逆順で描画（下層から上層へ）
-        for (const id of [...cgOrder].reverse()) {
-            if (cgMemberIds.has(id)) continue; // CGメンバーはCG経由で描画済み
-            if (cgMap[id]) renderCg(cgMap[id]);
-            else { const node = nodeMap[id]; if (node) renderOneNode(node, true); }
-        }
+        renderIdList([...cgOrder].reverse(), true, true);
     } else {
         // フォールバック: PSD元順序（psd-toolsは下層→上層）
-        for (const n of layers) renderOneNode(n, false);
+        renderChildren(layers, false);
     }
 }
 
@@ -2398,9 +2402,7 @@ class PSDModal {
                                      : null;
                         const slotCount = isComposite ? 1
                                         : (isPsdGroup || isCustomGroup) ? (leaves?.length ?? 0) : 1;
-                        const isOrphaned = (isPsdGroup || isCustomGroup) && (
-                            isComposite ? (leaves?.length ?? 0) === 0 : slotCount === 0
-                        );
+                        const isOrphaned = (isPsdGroup || isCustomGroup) && (leaves?.length ?? 0) === 0;
                         const isGSel = i === this._selectedSwGroupIdx;
 
                         const gRow = document.createElement("div");

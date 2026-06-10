@@ -30,8 +30,8 @@ class PSDFigureCreatorNode:
             "optional": {
                 "psd_filename": ("STRING", {"default": ""}),
                 "layer_config": ("STRING", {"default": "{}"}),
-                "output_width":  ("INT", {"default": 512, "min": 0, "max": 8192, "step": 64}),
-                "output_height": ("INT", {"default": 512, "min": 0, "max": 8192, "step": 64}),
+                "output_width":  ("INT", {"default": 512, "min": 0, "max": 8192, "step": 1}),
+                "output_height": ("INT", {"default": 512, "min": 0, "max": 8192, "step": 1}),
                 "image_data":    ("STRING", {"default": ""}),
                 "background_image": ("IMAGE",),
             },

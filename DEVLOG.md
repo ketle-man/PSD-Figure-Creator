@@ -2,6 +2,91 @@
 
 ---
 
+## v2.24.0 — 2026-06-10
+
+### Overview
+Post-release code review of the v2.21–v2.23 work (clipping-mask support, +L/+P/+C split)
+surfaced nine findings; eight are fixed here. The ninth — in-place entry-type conversion
+between layer and group entries, removed by the +L/+P/+C dropdown split — is accepted as a
+design tradeoff. Highlights: clipping stacks now work at the document root and inside
+custom groups (previously only inside PSD folders), layer masks are applied again in
+canvas layer images, hidden clipping layers are respected by server-side compositing, and
+the clipping-stack offscreen canvas is cached instead of re-allocated per frame.
+Additionally, the output-size widgets now step in 1 px increments.
+
+### Fixed
+- **Root-level / custom-group clipping stacks** (`psd_loader.js`) — clipping stacks were
+  only assembled by `renderChildren`, which is reached exclusively for PSD folder children.
+  Root-level layers (both the `cg_order` path and the PSD-order fallback) and custom-group
+  members were drawn one-by-one via `renderOneNode` / `renderCg`, so clipping layers
+  outside folders rendered unclipped (fully visible). New helper
+  `renderIdList(ids, skipCgMembers, skipCgMemberEntries)` groups consecutive plain nodes
+  into runs and feeds them through `renderChildren`, so stacks form on every path:
+  - `cg_order` path → `renderIdList([...cgOrder].reverse(), true, true)`
+  - `renderCg` (custom-group members) → `renderIdList([...cg.layer_ids].reverse(), false, false)`
+  - fallback path → `renderChildren(layers, false)` directly
+  - `renderClippingStack` also gained the previously missing
+    `skipCgMembers && cgMemberIds.has(base.id)` guard on the base layer, matching
+    `renderOneNode` behavior.
+
+- **Hidden clipping layers baked into server-side composite** (`psd_utils.py`) —
+  `_manual_composite` / `_manual_composite_ordered` skipped clipping layers *before*
+  consulting `effective_vis`, and the base layer's `composite()` bakes clip layers in
+  regardless of config — so a clipping layer hidden in the UI still appeared in
+  `/psd_loader/preview` output (JS preview hid it correctly). Base composition now passes
+  a `layer_filter` built from `effective_vis` (`_composite_single(layer, vis_fn)`), so
+  hidden clipping layers are excluded. psd-tools without `layer_filter` support falls back
+  to the previous behavior via `TypeError` catch.
+
+- **Layer masks lost in canvas layer images** (`psd_utils.py::get_layer_image_by_id`) —
+  v2.21 switched to `topil()` to avoid clip-layer double-draw, but `topil()` returns raw
+  pixels without layer masks, effects, or opacity. Now uses
+  `composite(layer_filter=lambda l: l is current)`, which applies masks while still
+  excluding clipping layers. For clipping layers themselves, a solo composite produces a
+  fully transparent image (nothing to clip to) — fixed by temporarily clearing the
+  `clipping` flag during composite (restored in `finally`; verified alpha-identical to
+  `topil()` on the sample PSD).
+
+### Performance
+- **Offscreen canvas cached** (`psd_loader.js`) — `renderClippingStack` allocated a
+  full-size `document.createElement('canvas')` per clipping stack per render pass;
+  `_drawPreview` runs on every mousemove during pose dragging, so this caused GC churn and
+  frame drops. The canvas is now cached in module-scope `_clipTmpCanvas`, resized only when
+  dimensions change, and cleared with `clearRect` per use.
+
+### Changed
+- **`output_width` / `output_height` step 64 → 1** (`psd_loader_node.py`) — output size is
+  now adjustable in 1 px increments (drag/arrow steps; was jumping by 64).
+- **`countSwSlots` = `expandSwGroupEntries().length`** (`psd_loader.js`) — removed the
+  duplicated composite/piece counting logic; slot expansion now has a single source of
+  truth (verified equivalent across 7 entry-type cases).
+- **`isOrphaned` simplified** (`_renderSwitchTab`) — the composite/piece ternary collapsed
+  to `(isPsdGroup || isCustomGroup) && (leaves?.length ?? 0) === 0`, which is equivalent
+  for both modes.
+- **`server.py::_build_layer_tree` delegates to `psd_utils.get_layer_tree`** — removed the
+  duplicated layer-dict construction (the two copies had to be edited in lockstep, e.g.
+  the v2.21 `clipping` field). Output verified identical.
+- **`_paste_layer` helper extracted** (`psd_utils.py`) — the identical composite→RGBA→
+  bounds-check→paste block in `_manual_composite` and `_manual_composite_ordered` is now
+  shared.
+- **Error logging** — the bare `except Exception: pass` around the layer-image composite
+  now logs `[psd_figure_creator] layer composite error (<name>): <e>` instead of silently
+  swallowing corrupt-layer failures.
+- **Dead i18n key removed** — `addGroupTooltip` (ja/en/zh) had no remaining references
+  after the v2.20 +L/+P/+C button split.
+
+### Verification
+- Python (sample_1.psd): hiding clipping layer `6.1` (irides-r) now changes both manual
+  composite paths (3,360 px diff, matching the layer bbox); all-visible output is
+  byte-identical before/after; `get_layer_image_by_id` returns mask-applied, clip-free
+  base images and non-empty clip-layer images.
+- JS (stub-DOM harness, 9 tests): clipping stacks form on root fallback / `cg_order` /
+  custom-group paths; `source-atop` draw order preserved; visibility overrides respected;
+  canvas cache allocates once; `countSwSlots` equivalence; non-clipping layers still draw
+  directly to the main canvas.
+
+---
+
 ## v2.23.0 — 2026-06-07
 
 ### Overview

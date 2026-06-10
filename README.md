@@ -96,8 +96,8 @@ A ready-to-use sample is bundled in the `user_data/` directory:
 |---|---|---|
 | `psd_filename` | STRING | PSD file path relative to the `input/psd/` directory |
 | `layer_config` | STRING | JSON string produced by the UI editor |
-| `output_width` | INT | Output width in pixels (0 = native PSD size) |
-| `output_height` | INT | Output height in pixels (0 = native PSD size) |
+| `output_width` | INT | Output width in pixels, adjustable in 1 px steps (0 = native PSD size) |
+| `output_height` | INT | Output height in pixels, adjustable in 1 px steps (0 = native PSD size) |
 | `image_data` | STRING | Base64 PNG from Capture (bypasses server-side compositing) |
 | `background_image` | IMAGE | Optional upstream image composited as the bottom layer |
 
@@ -161,7 +161,7 @@ A slot entry whose group or folder has been deleted shows a red row background a
 
 ## Clipping Layers
 
-Layers with the Photoshop "clip to layer below" flag appear with a **✂** badge in the layer panel and SW `+L` dropdown. The canvas compositor renders them using `source-atop` blending: each clipping layer is masked to the opaque area of its base layer (the layer directly below it). R/MR rigs placed on a clipping layer work normally within that masked region.
+Layers with the Photoshop "clip to layer below" flag appear with a **✂** badge in the layer panel and SW `+L` dropdown. The canvas compositor renders them using `source-atop` blending: each clipping layer is masked to the opaque area of its base layer (the layer directly below it). R/MR rigs placed on a clipping layer work normally within that masked region. Clipping applies everywhere: at the PSD document root, inside folders, and inside custom groups.
 
 > **⚠ Parent setup note:** If the base layer has a rig that moves it, the clipping layer must share the **same parent** (configured in the Parent tab) to follow along. Without a matching parent, the clipping layer stays at its original canvas position while the base moves, breaking the mask alignment.
 

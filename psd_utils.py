@@ -52,42 +52,57 @@ def get_layer_tree(psd):
     return tree, id_map
 
 
+def _composite_single(layer, vis_fn=None):
+    # vis_fn があれば layer_filter として渡し、非表示クリッピングレイヤーを
+    # 焼き込みから除外する。layer_filter 非対応の古い psd-tools では従来動作。
+    if vis_fn is not None:
+        try:
+            return layer.composite(layer_filter=vis_fn)
+        except TypeError:
+            pass
+    return layer.composite()
+
+
+def _paste_layer(canvas, layer, vis_fn=None):
+    W, H = canvas.size
+    try:
+        img = _composite_single(layer, vis_fn)
+        if img is None:
+            return
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        tmp = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        x, y = layer.left, layer.top
+        # キャンバス範囲内にクリップして貼り付け
+        if x < W and y < H and x + img.width > 0 and y + img.height > 0:
+            tmp.paste(img, (x, y))
+            canvas.alpha_composite(tmp)
+    except Exception as e:
+        print(f"[psd_figure_creator] layer composite error ({layer.name}): {e}")
+
+
 # ============================================================
 # フォールバック手動合成
 #   layer_filter 非対応・ignore_preview 無効な psd-tools 向け
 # ============================================================
 def _manual_composite(psd, effective_vis: dict, id_to_path: dict) -> Image.Image:
     canvas = Image.new("RGBA", (psd.width, psd.height), (0, 0, 0, 0))
-    W, H = psd.width, psd.height
+
+    def vis_of(layer):
+        path_id = id_to_path.get(id(layer))
+        return effective_vis.get(path_id, layer.is_visible()) if path_id else layer.is_visible()
 
     def render(layer):
         # クリッピングレイヤーはベースレイヤーの composite() が合成するためスキップ
         if getattr(layer, "clipping", False):
             return
-
-        path_id = id_to_path.get(id(layer))
-        is_vis = effective_vis.get(path_id, layer.is_visible()) if path_id else layer.is_visible()
-        if not is_vis:
+        if not vis_of(layer):
             return
-
         if layer.is_group():
             for child in layer:
                 render(child)
         else:
-            try:
-                img = layer.composite()
-                if img is None:
-                    return
-                if img.mode != "RGBA":
-                    img = img.convert("RGBA")
-                tmp = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-                x, y = layer.left, layer.top
-                # キャンバス範囲内にクリップして貼り付け
-                if x < W and y < H and x + img.width > 0 and y + img.height > 0:
-                    tmp.paste(img, (x, y))
-                    canvas.alpha_composite(tmp)
-            except Exception as e:
-                print(f"[psd_figure_creator] layer composite error ({layer.name}): {e}")
+            _paste_layer(canvas, layer, vis_of)
 
     for layer in psd:
         render(layer)
@@ -100,7 +115,12 @@ def _manual_composite(psd, effective_vis: dict, id_to_path: dict) -> Image.Image
 # ============================================================
 def _manual_composite_ordered(psd, effective_vis: dict, id_map: dict, layer_order: list) -> Image.Image:
     canvas = Image.new("RGBA", (psd.width, psd.height), (0, 0, 0, 0))
-    W, H = psd.width, psd.height
+
+    id_to_lid = {id(layer): lid for lid, layer in id_map.items()}
+
+    def vis_of(layer):
+        lid = id_to_lid.get(id(layer))
+        return effective_vis.get(lid, layer.is_visible()) if lid is not None else layer.is_visible()
 
     def render_node(order_entry):
         lid = order_entry["id"]
@@ -120,19 +140,7 @@ def _manual_composite_ordered(psd, effective_vis: dict, id_map: dict, layer_orde
             # クリッピングレイヤーはベースレイヤーの composite() が合成するためスキップ
             if getattr(layer, "clipping", False):
                 return
-            try:
-                img = layer.composite()
-                if img is None:
-                    return
-                if img.mode != "RGBA":
-                    img = img.convert("RGBA")
-                tmp = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-                x, y = layer.left, layer.top
-                if x < W and y < H and x + img.width > 0 and y + img.height > 0:
-                    tmp.paste(img, (x, y))
-                    canvas.alpha_composite(tmp)
-            except Exception as e:
-                print(f"[psd_figure_creator] layer composite error ({layer.name}): {e}")
+            _paste_layer(canvas, layer, vis_of)
 
     for entry in layer_order:
         render_node(entry)
@@ -234,14 +242,25 @@ def get_layer_image_by_id(psd_path: str, layer_id: str):
 
     try:
         img = None
-        # topil() で生ピクセルを取得する。composite() はクリッピングレイヤーを
-        # ベースレイヤーに合成するため、ベースレイヤー画像にクリッピングレイヤーが
-        # 二重描画される問題（→ リグが動いて見えない）を防ぐ。
+        # composite() はクリッピングレイヤーをベースレイヤーに合成するため、
+        # ベースレイヤー画像にクリッピングレイヤーが二重描画される問題
+        # （→ リグが動いて見えない）を防ぐべく layer_filter で自レイヤーのみ合成する。
+        # topil() と異なりレイヤーマスク・不透明度は適用される。
+        # クリッピングレイヤー自身はベース不在の合成だと全透明になるため、
+        # フラグを一時的に外して合成する（クリップ処理はJS側が source-atop で行う）。
         if not current.is_group():
+            was_clipping = bool(getattr(current, "clipping", False))
             try:
-                img = current.topil()
-            except Exception:
-                pass
+                if was_clipping:
+                    current.clipping = False
+                img = current.composite(layer_filter=lambda l: l is current)
+            except TypeError:
+                pass  # 古い psd-tools は layer_filter 非対応 → 通常の composite() へ
+            except Exception as e:
+                print(f"[psd_figure_creator] layer composite error ({current.name}): {e}")
+            finally:
+                if was_clipping:
+                    current.clipping = True
         if img is None:
             img = current.composite()
         if img is None:

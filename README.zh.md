@@ -96,8 +96,8 @@ pip install psd-tools
 |---|---|---|
 | `psd_filename` | STRING | 相对于 `input/psd/` 目录的 PSD 文件路径 |
 | `layer_config` | STRING | UI 编辑器生成的 JSON 字符串 |
-| `output_width` | INT | 输出宽度（像素），0 = 使用 PSD 原始尺寸 |
-| `output_height` | INT | 输出高度（像素），0 = 使用 PSD 原始尺寸 |
+| `output_width` | INT | 输出宽度（像素，可按 1px 单位调整），0 = 使用 PSD 原始尺寸 |
+| `output_height` | INT | 输出高度（像素，可按 1px 单位调整），0 = 使用 PSD 原始尺寸 |
 | `image_data` | STRING | 来自 Capture 的 Base64 PNG（跳过服务端合成） |
 | `background_image` | IMAGE | 合成为最底层的上游节点图像（可选） |
 
@@ -161,7 +161,7 @@ pip install psd-tools
 
 ## 剪贴蒙版图层
 
-设置了 Photoshop「剪贴到下方图层」标志的图层，在图层面板和 SW 的 `+L` 下拉列表中会显示 **✂** 标记。画布合成器使用 `source-atop` 混合模式渲染 — 每个剪贴蒙版图层被遮罩到其正下方基础图层的不透明区域。放置在剪贴蒙版图层上的 R/MR 绑定在该遮罩区域内正常工作。
+设置了 Photoshop「剪贴到下方图层」标志的图层，在图层面板和 SW 的 `+L` 下拉列表中会显示 **✂** 标记。画布合成器使用 `source-atop` 混合模式渲染 — 每个剪贴蒙版图层被遮罩到其正下方基础图层的不透明区域。放置在剪贴蒙版图层上的 R/MR 绑定在该遮罩区域内正常工作。剪贴蒙版在 PSD 文档根级、文件夹内以及自定义组内均可生效。
 
 > **⚠ 父级设置注意：** 若基础图层设置了绑定并会移动，剪贴蒙版图层需在**父级选项卡中设置相同的父级**才能随之移动。若未设置匹配的父级，剪贴蒙版图层将停留在画布原始位置，导致遮罩错位。
 

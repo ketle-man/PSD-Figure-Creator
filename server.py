@@ -15,27 +15,9 @@ def _get_psd_dir() -> Path:
 
 
 def _build_layer_tree(psd) -> list:
-    def _node(layer, path):
-        lid = ".".join(str(i) for i in path)
-        node = {
-            "id": lid,
-            "name": layer.name,
-            "visible": layer.is_visible(),
-            "kind": layer.kind.value if hasattr(layer.kind, "value") else str(layer.kind),
-            "clipping": bool(getattr(layer, "clipping", False)),
-            "bbox": {
-                "left": layer.left,
-                "top": layer.top,
-                "right": layer.right,
-                "bottom": layer.bottom,
-            },
-        }
-        if layer.is_group():
-            node["kind"] = "group"
-            node["children"] = [_node(child, path + [i]) for i, child in enumerate(layer)]
-        return node
-
-    return [_node(layer, [i]) for i, layer in enumerate(psd)]
+    from .psd_utils import get_layer_tree
+    tree, _ = get_layer_tree(psd)
+    return tree
 
 
 @PromptServer.instance.routes.post("/psd_loader/upload")
