@@ -5083,7 +5083,8 @@ app.registerExtension({
                 ? _origComputeSize.call(this, out)
                 : (out || new Float32Array(2));
             size[0] = PREVIEW_NODE_W;
-            const minH = UI_WIDGET_H + 80;
+            const kfExtra = (this._kfPanelVisible ? KF_PANEL_H : 0);
+            const minH = UI_WIDGET_H + kfExtra + 80;
             if (size[1] < minH) size[1] = minH;
             return size;
         };
