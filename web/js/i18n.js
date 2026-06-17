@@ -124,8 +124,11 @@ const LOCALES = {
         kfExportBtn:    "🎬 WebM",
         kfExportTooltip: "アニメーションを WebM 動画としてエクスポート（Chrome推奨）",
         kfExporting:    "エクスポート中...",
-        kfFpsLabel:     "FPS",
-        kfNoKeyframes:  "キーフレームが登録されていません",
+        kfFpsLabel:       "FPS",
+        kfNoKeyframes:    "キーフレームが登録されていません",
+        kfSaveProjBtn:    "💾 Proj",
+        kfSaveProjTooltip:"キーフレームアニメーションをライブラリにプロジェクトとして保存",
+        kfProjNamePrompt: "プロジェクト名:",
 
         // ヘルプ
         helpBtn:   "?",
@@ -247,8 +250,11 @@ const LOCALES = {
         kfExportBtn:    "🎬 WebM",
         kfExportTooltip: "Export animation as WebM video (Chrome recommended)",
         kfExporting:    "Exporting...",
-        kfFpsLabel:     "FPS",
-        kfNoKeyframes:  "No keyframes registered",
+        kfFpsLabel:       "FPS",
+        kfNoKeyframes:    "No keyframes registered",
+        kfSaveProjBtn:    "💾 Proj",
+        kfSaveProjTooltip:"Save keyframe animation to library as a project",
+        kfProjNamePrompt: "Project name:",
 
         // Help
         helpBtn:   "?",
@@ -370,8 +376,11 @@ const LOCALES = {
         kfExportBtn:    "🎬 WebM",
         kfExportTooltip: "将动画导出为WebM视频（推荐使用Chrome）",
         kfExporting:    "导出中...",
-        kfFpsLabel:     "FPS",
-        kfNoKeyframes:  "未注册关键帧",
+        kfFpsLabel:       "FPS",
+        kfNoKeyframes:    "未注册关键帧",
+        kfSaveProjBtn:    "💾 Proj",
+        kfSaveProjTooltip:"将关键帧动画作为项目保存到库",
+        kfProjNamePrompt: "项目名称:",
 
         // 帮助
         helpBtn:   "?",
