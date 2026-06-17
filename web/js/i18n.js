@@ -110,6 +110,23 @@ const LOCALES = {
         externalBgConnected:     "🔗 外部背景画像接続中",
         queuePromptToApply:      "Queue Prompt で反映されます",
 
+        // キーフレーム
+        kfPanelBtn:     "⏱",
+        kfPanelTooltip: "キーフレームパネルを開閉",
+        kfAddBtn:       "+KF",
+        kfAddTooltip:   "現在フレームにキーフレームを追加（上書き）",
+        kfDelBtn:       "🗑KF",
+        kfDelTooltip:   "現在フレームのキーフレームを削除",
+        kfPlayBtn:      "▶",
+        kfStopBtn:      "■",
+        kfPlayTooltip:  "再生",
+        kfStopTooltip:  "停止",
+        kfExportBtn:    "🎬 WebM",
+        kfExportTooltip: "アニメーションを WebM 動画としてエクスポート（Chrome推奨）",
+        kfExporting:    "エクスポート中...",
+        kfFpsLabel:     "FPS",
+        kfNoKeyframes:  "キーフレームが登録されていません",
+
         // ヘルプ
         helpBtn:   "?",
         helpTitle: "PSD モデルエディタ — ヘルプ",
@@ -216,6 +233,23 @@ const LOCALES = {
         externalBgConnected:     "🔗 External BG connected",
         queuePromptToApply:      "Apply with Queue Prompt",
 
+        // Keyframe
+        kfPanelBtn:     "⏱",
+        kfPanelTooltip: "Toggle keyframe panel",
+        kfAddBtn:       "+KF",
+        kfAddTooltip:   "Add/overwrite keyframe at current frame",
+        kfDelBtn:       "🗑KF",
+        kfDelTooltip:   "Delete keyframe at current frame",
+        kfPlayBtn:      "▶",
+        kfStopBtn:      "■",
+        kfPlayTooltip:  "Play",
+        kfStopTooltip:  "Stop",
+        kfExportBtn:    "🎬 WebM",
+        kfExportTooltip: "Export animation as WebM video (Chrome recommended)",
+        kfExporting:    "Exporting...",
+        kfFpsLabel:     "FPS",
+        kfNoKeyframes:  "No keyframes registered",
+
         // Help
         helpBtn:   "?",
         helpTitle: "PSD Model Editor — Help",
@@ -321,6 +355,23 @@ const LOCALES = {
 
         externalBgConnected:     "🔗 外部背景图像已连接",
         queuePromptToApply:      "通过 Queue Prompt 应用",
+
+        // 关键帧
+        kfPanelBtn:     "⏱",
+        kfPanelTooltip: "切换关键帧面板",
+        kfAddBtn:       "+KF",
+        kfAddTooltip:   "在当前帧添加/覆盖关键帧",
+        kfDelBtn:       "🗑KF",
+        kfDelTooltip:   "删除当前帧的关键帧",
+        kfPlayBtn:      "▶",
+        kfStopBtn:      "■",
+        kfPlayTooltip:  "播放",
+        kfStopTooltip:  "停止",
+        kfExportBtn:    "🎬 WebM",
+        kfExportTooltip: "将动画导出为WebM视频（推荐使用Chrome）",
+        kfExporting:    "导出中...",
+        kfFpsLabel:     "FPS",
+        kfNoKeyframes:  "未注册关键帧",
 
         // 帮助
         helpBtn:   "?",
