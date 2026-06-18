@@ -2,6 +2,100 @@
 
 ---
 
+## v0.5.1 — 2026-06-18
+
+### Added
+- **キーフレーム移動トグル (`↔`)** — Row A に `↔` ボタン（`kfMoveKeyBtn`）を追加。ON 状態でタイムラインのドラッグがキーフレームを移動する（プレイヘッドは無効化）。OFF 状態は従来通りプレイヘッドをドラッグ。ON 時はボタンが紫系ハイライト（`background:#3a2a4a; border:#8a5a9a; outline:1px solid #aa77cc`）で状態を示し、ダイヤモンドマーカー 12px 以内でカーソルが `grab` になる。ポーズのみ・カメラのみ・両方を含むどの KF もまとめて移動する（`frame` フィールドを書き換えて `layer_config.keyframes` を即時更新）。移動先に既存 KF がある場合は上書き
+
+- **新関数 `moveKeyframe(node, fromFrame, toFrame)`** — 指定フレームの KF エントリ全体を別フレームへ移動。移動先に既存 KF があれば先に削除してから追加しソート。`layer_config.keyframes` とタイムラインキャンバスを更新
+
+### Changed
+- **Row A / Row B レイアウト変更** — 再生・停止ボタンを Row A から Row B へ移動し、操作グループを整理:
+  - Row A から `sep2`・`▶（再生）`・`■（停止）` を削除
+  - Row A 最終形: `[+KF] [🗑KF] | [+CK] [-CK] | [↔] | [0] [◀] [f] / [t] [▶（次フレーム）]`
+  - `[🎬 WebM]` を Row B の `[💾 Proj]` の直右隣に移動（`margin-left:auto` を除去）
+  - Row B に `flex:1` スペーサー (`rowBSpacer`) を追加し、右端に `[▶（再生）] [■（停止）]` を配置
+  - 再生ボタンに `min-width:54px`（通常の約 2 倍幅）を追加
+  - Row B 最終形: `[New] FPS [24] [💾 Proj] [🎬 WebM]  ←flex:1→  [進捗] [▶▶▶] [■]`
+
+- **i18n** — `kfMoveKeyBtn` / `kfMoveKeyTooltip` を ja / en / zh に追加
+
+---
+
+## v0.5.0 — 2026-06-18
+
+### Overview
+キーフレームアニメーションシステムと WebM 動画エクスポートを追加。⏱ ボタンでキーフレームパネルを展開し、ポーズ / カメラを独立してフレームに記録、タイムラインをクリック / ドラッグでスクラブ、補間再生プレビュー、WebM 形式での動画書き出しができる。カメラキーフレームはポーズとは独立した補間ロジックで処理される。キーフレームプロジェクトはライブラリのポーズ欄に保存・再読み込みでき、`layer_config.keyframes` に永続化されるため ComfyUI のワークフロー保存にも対応。
+
+### Added
+- **ポーズキーフレーム記録 (`+KF` / `🗑KF`)** — 現在フレームにポーズを記録・削除。位置 (tx/ty)・角度・可視性・SW 角度を保存。カメラは含まない（後述の `+CK` で個別に記録）
+
+- **カメラキーフレーム記録 (`+CK` / `-CK`)** — 現在フレームにカメラ状態（zoom / x / y / roll）を個別に記録・削除。同フレームにポーズ KF があれば `camera` フィールドを追加 / 更新し、なければカメラのみのエントリを新規作成。`-CK` はカメラフィールドだけを削除しポーズデータは保持する
+
+- **タイムライン UI (`⏱ トグル`)** — ノードの row3 に ⏱ ボタンを追加。展開時にキーフレームパネルを表示:
+  - **Row A**: `[+KF] [🗑KF] | [+CK] [-CK] | [0] [◀] [フレーム番号] / [総フレーム数] [▶] | [▶ 再生] [■ 停止]`
+  - **タイムラインキャンバス** (34 px) — フレームトラック + ◆ マーカー + 再生ヘッドを描画。クリック / ドラッグでスクラブ
+  - **Row B**: `[New] FPS [入力] | [💾 Proj] | [進捗表示] | [🎬 WebM]`
+
+- **タイムラインマーカーの色分け** — キーフレームの種別を ◆ の色で識別:
+  - 黄（`#ffdd44`）— ポーズのみ
+  - 紫（`#cc66ff`）— カメラのみ
+  - 緑（`#44ee88`）— ポーズ＋カメラ両方
+  - 現在フレームのマーカーは 1px 大きく同色グローを表示
+
+- **`0` ボタン（フレーム 0 ジャンプ）** — Row A のナビゲーション左端に配置。`seekToFrame(node, 0)` を呼ぶ
+
+- **`New` ボタン（全 KF クリア）** — Row B の FPS 左隣に配置。confirm ダイアログ後に `node._keyframes = []` / `layer_config.keyframes` 削除 / フレーム 0 にリセット。誤操作防止のため Row B（操作頻度の低い行）に配置
+
+- **フレーム補間** — キーフレーム間を自動補間:
+  - 位置 (tx/ty): 線形補間 (lerp)
+  - 角度 / SW 角度 / カメラ roll: 最短回転パスで補間 (shortest-path angle lerp)
+  - カメラ zoom / x / y: 線形補間
+  - カメラ補間はポーズ KF の位置とは独立し、`camera` フィールドを持つ KF のみを対象に前後を探して補間する
+  - 可視性: 直前のキーフレーム値を維持（ステップ）
+
+- **再生プレビュー** — `▶` ボタンで RAF ベースの再生ループ。FPS フィールドで速度を調整（デフォルト 24 fps）。再生中は `■` で停止
+
+- **WebM 動画エクスポート (`🎬 WebM`)** — `canvas.captureStream(0)` + `track.requestFrame()` + `MediaRecorder` でフレームを逐次レンダリングしてエンコード。Chrome / Edge 推奨（VP8 コーデック）。カメラキーフレームは `renderToOutputCanvas` が `node._camera` を参照するため自動的に WebM に反映される。進捗をテキストで表示
+
+- **プロジェクト保存 / 読み込み (`💾 Proj`)** — キーフレームデータ（フレームリスト・総フレーム数・FPS）をライブラリのポーズ欄に保存。ファイル名デフォルトは `project-YYYYMMDDHHMMSS`（プロンプトで変更可）。ライブラリから読み込み時に `_type: "kf_project"` フィールドで自動判別し、フレーム 0 のポーズをキャンバスに適用してタイムラインを復元
+
+- **キーフレームのワークフロー永続化** — キーフレームは `layer_config.keyframes` に保存。ComfyUI のワークフロー保存 / 読み込みで自動復元。`PSDModal._apply()` による設定上書き時もキーフレームが保持される (`onConfigure` フックで `_keyframes` を再展開)
+
+- **新定数 `KF_PANEL_H = 98`** — キーフレームパネルの高さ定数を `computeSize` と `buildKeyframePanel` で共用
+
+- **i18n キー追加** (`i18n.js`) — `kfPanelBtn`, `kfPanelTooltip`, `kfAddBtn`, `kfAddTooltip`, `kfDelBtn`, `kfDelTooltip`, `kfPlayBtn`, `kfStopBtn`, `kfExportBtn`, `kfExportTooltip`, `kfExporting`, `kfFpsLabel`, `kfNoKeyframes`, `kfSaveProjBtn`, `kfSaveProjTooltip`, `kfProjNamePrompt`, `kfGoToZeroBtn`, `kfGoToZeroTooltip`, `kfClearBtn`, `kfClearTooltip`, `kfAddCamBtn`, `kfAddCamTooltip`, `kfDelCamBtn`, `kfDelCamTooltip` を ja / en / zh に追加
+
+### Fixed
+- **KF パネル展開時のノード高さ崩れ** (`psd_loader.js`) — `nodeType.prototype.computeSize` がハードコードの `UI_WIDGET_H + 80` を返していたため、ComfyUI がレンダリングサイクルごとにノード高さを旧値に戻し、パネルが見えなくなっていた。`_kfPanelVisible` フラグを参照して `const kfExtra = (this._kfPanelVisible ? KF_PANEL_H : 0)` を加算するよう修正
+
+- **カメラのみ KF でシーク / 再生がクラッシュしてループが止まる** (`seekToFrame`) — `_kfGetInterpolatedState` がカメラのみ KF をそのまま返すと `state.pose` / `state.sw_angles` / `state.visibility` が `undefined` になる。`JSON.parse(JSON.stringify(undefined))` が SyntaxError をスローし RAF ループが停止していた。各フィールドに `undefined` ガードを追加（`state.pose !== undefined` のときのみ適用、`state.sw_angles` / `state.visibility` は `&&` でガード）
+
+- **`+KF` でポーズを上書きするとカメラ KF が消える** (`addKeyframeAtCurrentFrame`) — 同フレームの既存 KF を `.filter` で丸ごと削除してから新 KF を追加していたため、`camera` フィールドが失われていた。上書き前に `existingKf = node._keyframes.find(k => k.frame === frame)` を取得し、`existingKf?.camera` があれば新 KF に引き継ぐよう修正
+
+- **`🗑KF` がカメラ KF も削除する** (`deleteKeyframeAtCurrentFrame`) — 丸ごと削除していたため同フレームのカメラデータも失われていた。ポーズ系フィールド（`pose` / `sw_angles` / `visibility`）のみ除去し `camera` は保持するよう修正。`camera` もなくなった場合のみエントリを削除する
+
+### Schema addition
+```jsonc
+// layer_config に追加されるキーフレームフィールド
+{
+  "keyframes": [
+    {
+      "frame": 0,
+      "visibility": { "<layerId>": true },
+      "pose":       { "<layerId>": { "angle": 0, "tx": 0, "ty": 0 } },
+      "sw_angles":  { "<pointId>": 0 },
+      "camera":     { "zoom": 1.0, "x": 0, "y": 0, "roll": 0 }  // +CK で記録、省略可
+    }
+  ],
+  "kf_total_frames": 60,
+  "kf_fps": 24
+}
+```
+`keyframes` がない既存の設定は従来通り動作（後方互換）。`camera` フィールドがない KF ではカメラは変化しない。
+
+---
+
 ## v2.24.0 — 2026-06-10
 
 ### Overview

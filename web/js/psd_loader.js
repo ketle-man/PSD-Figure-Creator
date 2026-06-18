@@ -1305,6 +1305,581 @@ function captureNode(node) {
 }
 
 // ================================================
+// 出力キャンバスへの共通レンダリング（captureNode・動画エクスポート共用）
+// ================================================
+function renderToOutputCanvas(node, destCanvas) {
+    const frame = computeOutputFrame(node);
+    if (!frame) return false;
+    const { fw, fh, srcW, srcH, outW, outH } = frame;
+    const cam = node._camera;
+
+    if (destCanvas.width  !== outW) destCanvas.width  = outW;
+    if (destCanvas.height !== outH) destCanvas.height = outH;
+
+    const ctx = destCanvas.getContext("2d");
+    ctx.clearRect(0, 0, outW, outH);
+
+    if (node._bgImage) {
+        const img    = node._bgImage;
+        const imgAsp = img.naturalWidth / img.naturalHeight;
+        const outAsp = outW / outH;
+        let bw, bh, bx, by;
+        if (imgAsp > outAsp) { bw = outW; bh = outW / imgAsp; } else { bh = outH; bw = outH * imgAsp; }
+        bx = (outW - bw) / 2; by = (outH - bh) / 2;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.drawImage(img, bx, by, bw, bh);
+    } else if (node._bgColorEnabled && node._bgColor) {
+        ctx.fillStyle = node._bgColor;
+        ctx.fillRect(0, 0, outW, outH);
+    }
+
+    const scaleOut = outW / fw;
+    ctx.save();
+    ctx.translate(outW / 2, outH / 2);
+    ctx.rotate(cam.roll || 0);
+    ctx.scale(cam.zoom * scaleOut, cam.zoom * scaleOut);
+    ctx.translate(-srcW / 2 + cam.x, -srcH / 2 + cam.y);
+
+    let config = {};
+    try { config = JSON.parse(findWidget(node, "layer_config")?.value || "{}"); } catch (_) {}
+
+    if (node._layerImages && node._psdLayers) {
+        renderLayersToCtx(ctx, node._psdLayers, getEffectiveImageMap(node, config), config);
+    } else if (node._compositeImg) {
+        ctx.drawImage(node._compositeImg, 0, 0, node._psdW, node._psdH);
+    }
+
+    ctx.restore();
+    return true;
+}
+
+// ================================================
+// キーフレームシステム
+// ================================================
+
+function _kfLerp(a, b, t) { return a + (b - a) * t; }
+
+// 角度の最短経路補間（-π〜π の範囲）
+function _kfLerpAngle(a, b, t) {
+    let d = b - a;
+    while (d >  Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    return a + d * t;
+}
+
+// 指定フレームでのポーズを補間して返す
+function _kfGetInterpolatedState(keyframes, frame) {
+    if (!keyframes.length) return null;
+
+    let before = null, after = null;
+    for (const kf of keyframes) {
+        if (kf.frame <= frame) before = kf;
+        if (kf.frame >= frame && !after) after = kf;
+    }
+
+    if (!before && !after) return null;
+    if (!before) return after;
+    if (!after)  return before;
+    if (before.frame === after.frame) return before;
+
+    const t = (frame - before.frame) / (after.frame - before.frame);
+
+    // pose 補間
+    const pose    = {};
+    const poseIds = new Set([...Object.keys(before.pose || {}), ...Object.keys(after.pose || {})]);
+    for (const id of poseIds) {
+        const a = before.pose?.[id] || { angle: 0, tx: 0, ty: 0 };
+        const b = after.pose?.[id]  || { angle: 0, tx: 0, ty: 0 };
+        pose[id] = {
+            angle: _kfLerpAngle(a.angle ?? 0, b.angle ?? 0, t),
+            tx:    _kfLerp(a.tx ?? 0, b.tx ?? 0, t),
+            ty:    _kfLerp(a.ty ?? 0, b.ty ?? 0, t),
+            flipX: t < 0.5 ? (a.flipX ?? false) : (b.flipX ?? false),
+            flipY: t < 0.5 ? (a.flipY ?? false) : (b.flipY ?? false),
+        };
+    }
+
+    // SW角度補間
+    const sw_angles = {};
+    const swIds = new Set([...Object.keys(before.sw_angles || {}), ...Object.keys(after.sw_angles || {})]);
+    for (const id of swIds) {
+        sw_angles[id] = _kfLerpAngle(before.sw_angles?.[id] ?? 0, after.sw_angles?.[id] ?? 0, t);
+    }
+
+    // visibility はステップ（before を使用）
+    const visibility = JSON.parse(JSON.stringify(before.visibility || {}));
+
+    // camera 補間：ポーズ KF とは独立してカメラ付き KF だけを探して補間
+    let camera = null;
+    {
+        let camBefore = null, camAfter = null;
+        for (const kf of keyframes) {
+            if (kf.camera && kf.frame <= frame) camBefore = kf;
+            if (kf.camera && kf.frame >= frame && !camAfter) camAfter = kf;
+        }
+        if (camBefore || camAfter) {
+            if (!camBefore) {
+                camera = { ...camAfter.camera };
+            } else if (!camAfter) {
+                camera = { ...camBefore.camera };
+            } else if (camBefore.frame === camAfter.frame) {
+                camera = { ...camBefore.camera };
+            } else {
+                const tc = (frame - camBefore.frame) / (camAfter.frame - camBefore.frame);
+                const a  = camBefore.camera;
+                const b  = camAfter.camera;
+                camera = {
+                    zoom: _kfLerp(      a.zoom ?? 1, b.zoom ?? 1, tc),
+                    x:    _kfLerp(      a.x    ?? 0, b.x    ?? 0, tc),
+                    y:    _kfLerp(      a.y    ?? 0, b.y    ?? 0, tc),
+                    roll: _kfLerpAngle( a.roll ?? 0, b.roll ?? 0, tc),
+                };
+            }
+        }
+    }
+
+    return { pose, sw_angles, visibility, camera };
+}
+
+// 指定フレームにシーク（layer_config を更新して再描画）
+// silent=true のとき node canvas の描画をスキップ（動画エクスポート時）
+function seekToFrame(node, frame, { silent = false } = {}) {
+    const total = Math.max(1, node._kfTotalFrames || 60);
+    frame = Math.max(0, Math.min(total - 1, frame));
+    node._kfCurrentFrame = frame;
+    if (node._kfCurrentFrameEl) node._kfCurrentFrameEl.value = frame;
+
+    const kfs = node._keyframes || [];
+    if (kfs.length > 0) {
+        const state = _kfGetInterpolatedState(kfs, frame);
+        if (state) {
+            const w = findWidget(node, "layer_config");
+            if (w) {
+                let config = {};
+                try { config = JSON.parse(w.value || "{}"); } catch (_) {}
+
+                if (state.pose !== undefined) {
+                    config.pose = JSON.parse(JSON.stringify(state.pose));
+                }
+
+                if (state.sw_angles && Object.keys(state.sw_angles).length > 0) {
+                    for (const swl of (config.sw_layers || [])) {
+                        for (const pt of (swl.points || [])) {
+                            if (pt.id in state.sw_angles) pt.angle = state.sw_angles[pt.id];
+                        }
+                    }
+                }
+
+                if (state.visibility && Object.keys(state.visibility).length > 0) {
+                    config.visibility = config.visibility || {};
+                    Object.assign(config.visibility, state.visibility);
+                }
+
+                w.value = JSON.stringify(config);
+            }
+
+            // カメラ補間値を適用（silent でも WebM エクスポートが node._camera を参照するため常に適用）
+            if (state.camera && node._camera) {
+                node._camera.zoom = state.camera.zoom;
+                node._camera.x    = state.camera.x;
+                node._camera.y    = state.camera.y;
+                node._camera.roll = state.camera.roll;
+            }
+        }
+    }
+
+    if (!silent) drawNodeCanvas(node);
+    updateTimelineCanvas(node);
+}
+
+// 現在フレームにキーフレームを追加/上書き
+function addKeyframeAtCurrentFrame(node) {
+    const w = findWidget(node, "layer_config");
+    if (!w) return;
+    let config = {};
+    try { config = JSON.parse(w.value || "{}"); } catch (_) {}
+
+    const frame = node._kfCurrentFrame || 0;
+
+    const sw_angles = {};
+    for (const swl of (config.sw_layers || [])) {
+        for (const pt of (swl.points || [])) {
+            sw_angles[pt.id] = pt.angle ?? 0;
+        }
+    }
+
+    // 同フレームに既存 KF があればカメラデータを引き継ぐ
+    const existingKf = (node._keyframes || []).find(k => k.frame === frame);
+    const kf = {
+        frame,
+        pose:       JSON.parse(JSON.stringify(config.pose       || {})),
+        sw_angles,
+        visibility: JSON.parse(JSON.stringify(config.visibility || {})),
+    };
+    if (existingKf?.camera) kf.camera = existingKf.camera;
+
+    node._keyframes = (node._keyframes || []).filter(k => k.frame !== frame);
+    node._keyframes.push(kf);
+    node._keyframes.sort((a, b) => a.frame - b.frame);
+
+    // layer_config に永続化
+    config.keyframes = JSON.parse(JSON.stringify(node._keyframes));
+    w.value = JSON.stringify(config);
+
+    updateTimelineCanvas(node);
+}
+
+// 現在フレームのポーズキーフレームを削除（camera フィールドは保持。両方なければエントリ削除）
+function deleteKeyframeAtCurrentFrame(node) {
+    const frame = node._kfCurrentFrame || 0;
+    node._keyframes = (node._keyframes || []).map(k => {
+        if (k.frame !== frame) return k;
+        // ポーズ系フィールドを除去し camera だけ残す
+        if (k.camera) return { frame: k.frame, camera: k.camera };
+        return null; // camera もなければエントリ削除
+    }).filter(Boolean);
+
+    const w = findWidget(node, "layer_config");
+    if (w) {
+        let config = {};
+        try { config = JSON.parse(w.value || "{}"); } catch (_) {}
+        config.keyframes = JSON.parse(JSON.stringify(node._keyframes));
+        w.value = JSON.stringify(config);
+    }
+
+    updateTimelineCanvas(node);
+}
+
+// 現在フレームにカメラをキーフレーム登録（既存 KF があれば camera フィールドを上書き、なければ新規エントリ）
+function addCameraKeyframeAtCurrentFrame(node) {
+    const cam = node._camera;
+    if (!cam) return;
+    const frame = node._kfCurrentFrame || 0;
+    const camSnap = { zoom: cam.zoom ?? 1, x: cam.x ?? 0, y: cam.y ?? 0, roll: cam.roll ?? 0 };
+
+    const existing = (node._keyframes || []).find(k => k.frame === frame);
+    if (existing) {
+        existing.camera = camSnap;
+    } else {
+        node._keyframes = node._keyframes || [];
+        node._keyframes.push({ frame, camera: camSnap });
+        node._keyframes.sort((a, b) => a.frame - b.frame);
+    }
+
+    const w = findWidget(node, "layer_config");
+    if (w) {
+        let config = {};
+        try { config = JSON.parse(w.value || "{}"); } catch (_) {}
+        config.keyframes = JSON.parse(JSON.stringify(node._keyframes));
+        w.value = JSON.stringify(config);
+    }
+    updateTimelineCanvas(node);
+}
+
+// 現在フレームのカメラキーフレームを削除（ポーズデータは保持。KF 自体が空になれば削除）
+function deleteCameraKeyframeAtCurrentFrame(node) {
+    const frame = node._kfCurrentFrame || 0;
+    node._keyframes = (node._keyframes || []).map(k => {
+        if (k.frame !== frame) return k;
+        const { camera, ...rest } = k;
+        return rest;
+    }).filter(k => k.camera !== undefined || Object.keys(k.pose || {}).length > 0 || Object.keys(k.sw_angles || {}).length > 0 || Object.keys(k.visibility || {}).length > 0);
+
+    const w = findWidget(node, "layer_config");
+    if (w) {
+        let config = {};
+        try { config = JSON.parse(w.value || "{}"); } catch (_) {}
+        config.keyframes = JSON.parse(JSON.stringify(node._keyframes));
+        w.value = JSON.stringify(config);
+    }
+    updateTimelineCanvas(node);
+}
+
+// キーフレームを別フレームに移動（ポーズ・カメラ一緒に移動。移動先に既存 KF があれば上書き）
+function moveKeyframe(node, fromFrame, toFrame) {
+    if (fromFrame === toFrame) return;
+    const movingKf = (node._keyframes || []).find(k => k.frame === fromFrame);
+    if (!movingKf) return;
+    node._keyframes = node._keyframes.filter(k => k.frame !== fromFrame && k.frame !== toFrame);
+    movingKf.frame = toFrame;
+    node._keyframes.push(movingKf);
+    node._keyframes.sort((a, b) => a.frame - b.frame);
+    const w = findWidget(node, "layer_config");
+    if (w) {
+        let cfg = {}; try { cfg = JSON.parse(w.value || "{}"); } catch (_) {}
+        cfg.keyframes = JSON.parse(JSON.stringify(node._keyframes));
+        w.value = JSON.stringify(cfg);
+    }
+    updateTimelineCanvas(node);
+}
+
+// タイムラインキャンバスを再描画
+function updateTimelineCanvas(node) {
+    const canvas = node._kfTimelineCanvas;
+    if (!canvas) return;
+
+    const ctx   = canvas.getContext("2d");
+    const W     = canvas.width, H = canvas.height;
+    const total = Math.max(2, node._kfTotalFrames || 60);
+    const cur   = node._kfCurrentFrame || 0;
+    const kfs   = node._keyframes || [];
+
+    ctx.clearRect(0, 0, W, H);
+
+    // 背景
+    ctx.fillStyle = "#1a1a2e";
+    ctx.fillRect(0, 0, W, H);
+
+    // トラックライン
+    const trackY = Math.round(H / 2);
+    ctx.fillStyle = "#313244";
+    ctx.fillRect(8, trackY - 2, W - 16, 4);
+
+    // キーフレームダイヤモンド（ポーズのみ:黄、カメラのみ:紫、両方:緑）
+    for (const kf of kfs) {
+        const x      = 8 + (kf.frame / (total - 1)) * (W - 16);
+        const isAt   = (kf.frame === cur);
+        const hasPose = kf.pose !== undefined;
+        const hasCam  = kf.camera !== undefined;
+        const color = (hasPose && hasCam) ? "#44ee88"
+                    : hasCam              ? "#cc66ff"
+                    :                       "#ffdd44";
+        ctx.save();
+        ctx.translate(Math.round(x), trackY);
+        ctx.rotate(Math.PI / 4);
+        const half = isAt ? 6 : 5;
+        ctx.fillStyle = color;
+        if (isAt) {
+            ctx.shadowColor = color;
+            ctx.shadowBlur  = 6;
+        }
+        ctx.fillRect(-half, -half, half * 2, half * 2);
+        ctx.restore();
+    }
+
+    // プレイヘッド
+    const px = 8 + (cur / (total - 1)) * (W - 16);
+    ctx.strokeStyle = "rgba(255,80,80,0.9)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(px, 2); ctx.lineTo(px, H - 2); ctx.stroke();
+
+    // プレイヘッド上三角
+    ctx.fillStyle = "rgba(255,80,80,0.9)";
+    ctx.beginPath();
+    ctx.moveTo(px - 4, 0);
+    ctx.lineTo(px + 4, 0);
+    ctx.lineTo(px, 5);
+    ctx.fill();
+
+    // フレーム番号
+    ctx.fillStyle = "#888";
+    ctx.font = "9px sans-serif";
+    ctx.textBaseline = "bottom";
+    ctx.textAlign = "left";
+    ctx.fillText(String(cur), 10, H - 1);
+    ctx.textAlign = "right";
+    ctx.fillText(String(total - 1), W - 10, H - 1);
+}
+
+// タイムラインキャンバスのドラッグ操作
+function setupTimelineInteraction(canvas, node) {
+    let dragging = false;
+    let movingKfFrame = null; // キー移動モード: 現在ドラッグ中の KF のフレーム番号
+
+    function frameFromClientX(clientX) {
+        const rect  = canvas.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left - 8) / (rect.width - 16)));
+        const total = Math.max(2, node._kfTotalFrames || 60);
+        return Math.round(ratio * (total - 1));
+    }
+
+    // クリック位置から 12px 以内で最も近い KF を返す
+    function nearestKf(clientX) {
+        const rect  = canvas.getBoundingClientRect();
+        const clickX = clientX - rect.left;
+        const W     = rect.width;
+        const total = Math.max(2, node._kfTotalFrames || 60);
+        let best = null, bestDist = 12;
+        for (const kf of (node._keyframes || [])) {
+            const kfX = 8 + (kf.frame / (total - 1)) * (W - 16);
+            const dist = Math.abs(clickX - kfX);
+            if (dist < bestDist) { bestDist = dist; best = kf; }
+        }
+        return best;
+    }
+
+    canvas.addEventListener("mousedown", e => {
+        dragging = true;
+        if (node._kfMoveKeyMode) {
+            const kf = nearestKf(e.clientX);
+            if (kf) {
+                movingKfFrame = kf.frame;
+                seekToFrame(node, kf.frame);
+            } else {
+                movingKfFrame = null;
+            }
+        } else {
+            seekToFrame(node, frameFromClientX(e.clientX));
+        }
+    });
+
+    window.addEventListener("mousemove", e => {
+        if (!dragging) return;
+        if (node._kfMoveKeyMode && movingKfFrame !== null) {
+            const newFrame = frameFromClientX(e.clientX);
+            if (newFrame !== movingKfFrame) {
+                moveKeyframe(node, movingKfFrame, newFrame);
+                movingKfFrame = newFrame;
+                seekToFrame(node, newFrame, { silent: true });
+            }
+        } else if (!node._kfMoveKeyMode) {
+            seekToFrame(node, frameFromClientX(e.clientX));
+        }
+    });
+
+    window.addEventListener("mouseup", () => {
+        if (node._kfMoveKeyMode && movingKfFrame !== null) {
+            seekToFrame(node, movingKfFrame);
+        }
+        dragging = false;
+        movingKfFrame = null;
+    });
+
+    // カーソル変更: キー移動モード時はダイヤモンド付近で grab
+    canvas.addEventListener("mousemove", e => {
+        if (!node._kfMoveKeyMode) { canvas.style.cursor = "pointer"; return; }
+        canvas.style.cursor = (dragging || nearestKf(e.clientX)) ? "grab" : "default";
+    });
+    canvas.addEventListener("mouseleave", () => { canvas.style.cursor = "pointer"; });
+}
+
+// 再生開始
+function startPlayback(node) {
+    if (node._kfPlaying) return;
+    node._kfPlaying = true;
+    if (node._kfPlayBtn) {
+        node._kfPlayBtn.textContent = "⏸";
+        node._kfPlayBtn.style.background = "#4a2a1a";
+    }
+
+    const fps      = Math.max(1, node._kfFps || 24);
+    const interval = 1000 / fps;
+    let   lastTime = performance.now();
+
+    function tick() {
+        if (!node._kfPlaying) return;
+        const now = performance.now();
+        if (now - lastTime >= interval) {
+            lastTime += interval;
+            const total = Math.max(2, node._kfTotalFrames || 60);
+            seekToFrame(node, (node._kfCurrentFrame + 1) % total);
+        }
+        node._kfPlayRaf = requestAnimationFrame(tick);
+    }
+    node._kfPlayRaf = requestAnimationFrame(tick);
+}
+
+// 再生停止
+function stopPlayback(node) {
+    node._kfPlaying = false;
+    if (node._kfPlayRaf) { cancelAnimationFrame(node._kfPlayRaf); node._kfPlayRaf = null; }
+    if (node._kfPlayBtn) {
+        node._kfPlayBtn.textContent = t("kfPlayBtn");
+        node._kfPlayBtn.style.background = "#1a2a4a";
+    }
+}
+
+// アニメーションを WebM 動画としてエクスポート
+// onProgress(currentFrame, totalFrames) でプログレスコールバック
+async function exportVideoWebM(node, onProgress) {
+    const fps   = Math.max(1, node._kfFps || 24);
+    const total = Math.max(2, node._kfTotalFrames || 60);
+    const fr    = computeOutputFrame(node);
+    if (!fr) return null;
+    const { outW, outH } = fr;
+
+    const offCanvas    = document.createElement("canvas");
+    offCanvas.width    = outW;
+    offCanvas.height   = outH;
+
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+        ? "video/webm;codecs=vp9"
+        : "video/webm";
+
+    const stream   = offCanvas.captureStream(0);
+    const track    = stream.getVideoTracks()[0];
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+    const chunks   = [];
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+    const savedFrame = node._kfCurrentFrame;
+    recorder.start();
+
+    for (let f = 0; f < total; f++) {
+        seekToFrame(node, f, { silent: true });
+        renderToOutputCanvas(node, offCanvas);
+        track.requestFrame();
+        onProgress?.(f + 1, total);
+        // レコーダーにフレームを渡す時間を確保
+        await new Promise(r => setTimeout(r, 0));
+    }
+
+    recorder.stop();
+    await new Promise(r => { recorder.onstop = r; });
+
+    // 再生位置を元に戻す
+    seekToFrame(node, savedFrame);
+
+    return new Blob(chunks, { type: "video/webm" });
+}
+
+// キーフレームアニメーションをライブラリのポーズとしてプロジェクト保存
+async function saveKeyframeProject(node) {
+    const kfs = node._keyframes || [];
+    if (!kfs.length) { alert(t("kfNoKeyframes")); return false; }
+
+    const now = new Date();
+    const p2  = n => String(n).padStart(2, "0");
+    const ts  = `${now.getFullYear()}${p2(now.getMonth() + 1)}${p2(now.getDate())}${p2(now.getHours())}${p2(now.getMinutes())}${p2(now.getSeconds())}`;
+    const defaultName = `project-${ts}`;
+
+    const name = prompt(t("kfProjNamePrompt"), defaultName);
+    if (!name || !name.trim()) return false;
+
+    const content = {
+        _type:           "kf_project",
+        keyframes:       JSON.parse(JSON.stringify(kfs)),
+        kf_total_frames: node._kfTotalFrames || 60,
+        kf_fps:          node._kfFps || 24,
+        thumbnail:       null,
+    };
+
+    // フレーム0でサムネイルを撮影して元に戻す
+    if (node._nodeCanvas && node._psdW) {
+        const savedFrame = node._kfCurrentFrame;
+        seekToFrame(node, 0, { silent: true });
+        content.thumbnail = captureThumbFromNode(node, 140);
+        seekToFrame(node, savedFrame, { silent: true });
+        drawNodeCanvas(node);
+    }
+
+    try {
+        const res = await fetch("/psd_loader/library/poses", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ filename: name.trim(), content }),
+        });
+        const d = await res.json();
+        if (d.error) throw new Error(d.error);
+        return true;
+    } catch (e) {
+        alert(t("poseSaveFailed", e.message));
+        return false;
+    }
+}
+
+// ================================================
 // レイヤー状態管理
 // ================================================
 class LayerState {
@@ -3647,7 +4222,15 @@ class PSDModal {
         configObj.layer_order = buildOrder(this.layerTree);
 
         const w = findWidget(this.node, "layer_config");
-        if (w) w.value = JSON.stringify(configObj);
+        if (w) {
+            // キーフレームデータを既存 config から引き継ぐ
+            let existing = {};
+            try { existing = JSON.parse(w.value || "{}"); } catch (_) {}
+            if (existing.keyframes?.length)              configObj.keyframes       = existing.keyframes;
+            if (existing.kf_total_frames !== undefined)  configObj.kf_total_frames = existing.kf_total_frames;
+            if (existing.kf_fps !== undefined)           configObj.kf_fps          = existing.kf_fps;
+            w.value = JSON.stringify(configObj);
+        }
 
         const node = this.node;
         node._psdLayers = JSON.parse(JSON.stringify(this.layerTree));
@@ -4083,18 +4666,42 @@ class LibraryModal {
             const node = this.node;
             let config = {};
             try { config = JSON.parse(findWidget(node, "layer_config")?.value || "{}"); } catch (_) {}
-            if (data.visibility) config.visibility = JSON.parse(JSON.stringify(data.visibility));
-            if (data.pose)       config.pose       = JSON.parse(JSON.stringify(data.pose));
-            if (data.sw_angles && config.sw_layers) {
-                config.sw_layers.forEach(swl => {
-                    (swl.points || []).forEach(pt => {
-                        if (data.sw_angles[pt.id] !== undefined) pt.angle = data.sw_angles[pt.id];
+
+            if (data._type === "kf_project" && Array.isArray(data.keyframes)) {
+                // ---- キーフレームプロジェクトの復元 ----
+                node._keyframes = JSON.parse(JSON.stringify(data.keyframes));
+                if (data.kf_total_frames !== undefined) {
+                    node._kfTotalFrames = data.kf_total_frames;
+                    if (node._kfTotalFramesEl) node._kfTotalFramesEl.value = data.kf_total_frames;
+                }
+                if (data.kf_fps !== undefined) {
+                    node._kfFps = data.kf_fps;
+                    if (node._kfFpsEl) node._kfFpsEl.value = data.kf_fps;
+                }
+                // layer_config に永続化
+                config.keyframes       = JSON.parse(JSON.stringify(node._keyframes));
+                config.kf_total_frames = node._kfTotalFrames;
+                config.kf_fps          = node._kfFps;
+                const w = findWidget(node, "layer_config");
+                if (w) w.value = JSON.stringify(config);
+                updateTimelineCanvas(node);
+                seekToFrame(node, 0);   // フレーム0にシーク（ポーズも適用される）
+            } else {
+                // ---- 通常ポーズの復元 ----
+                if (data.visibility) config.visibility = JSON.parse(JSON.stringify(data.visibility));
+                if (data.pose)       config.pose       = JSON.parse(JSON.stringify(data.pose));
+                if (data.sw_angles && config.sw_layers) {
+                    config.sw_layers.forEach(swl => {
+                        (swl.points || []).forEach(pt => {
+                            if (data.sw_angles[pt.id] !== undefined) pt.angle = data.sw_angles[pt.id];
+                        });
                     });
-                });
+                }
+                const w = findWidget(node, "layer_config");
+                if (w) w.value = JSON.stringify(config);
+                drawNodeCanvas(node);
             }
-            const w = findWidget(node, "layer_config");
-            if (w) w.value = JSON.stringify(config);
-            drawNodeCanvas(node);
+
             this.destroy();
         } catch (e) { alert(t("poseLoadFailed", e.message)); }
     }
@@ -4347,7 +4954,260 @@ const PREVIEW_NODE_W   = 474;
 const PREVIEW_CANVAS_W = PREVIEW_NODE_W - 12; // 462px
 const BTN_ROW_H        = 30;
 const PREVIEW_WIDGET_H = PREVIEW_IMG_H + 108;  // 530 (+10 wrap padding, +2 border, +18 status, +26 slider, +26 bg row, +26 margin)
-const UI_WIDGET_H      = BTN_ROW_H * 2 + PREVIEW_WIDGET_H; // 60 + 530 = 570
+const UI_WIDGET_H      = BTN_ROW_H * 2 + PREVIEW_WIDGET_H; // 60 + 530 = 590
+const KF_PANEL_H       = 98;  // キーフレームパネルの高さ（行A+タイムライン+行B+パディング）
+
+// ================================================
+// キーフレームパネル DOM を作成
+// ================================================
+function buildKeyframePanel(node) {
+    const panel = document.createElement("div");
+    panel.style.cssText = [
+        "width:100%", "box-sizing:border-box",
+        "padding:3px 6px 5px", "display:none",  // 初期非表示
+        "flex-direction:column", "gap:3px",
+        "background:#13131f", "border-top:1px solid #313244",
+    ].join(";");
+
+    const kfBtnSt = [
+        "background:#313244", "border:1px solid #45475a",
+        "border-radius:3px", "color:#cdd6f4",
+        "cursor:pointer", "padding:2px 7px",
+        "font-size:11px", "white-space:nowrap",
+    ].join(";");
+
+    // ---- 行A: 操作ボタン ----
+    const rowA = document.createElement("div");
+    rowA.style.cssText = "display:flex;align-items:center;gap:4px;height:26px;";
+
+    const addBtn = document.createElement("button");
+    addBtn.style.cssText = kfBtnSt + ";background:#1a3a2a;border-color:#2a6a3a;";
+    addBtn.textContent = t("kfAddBtn");
+    addBtn.title = t("kfAddTooltip");
+    addBtn.onclick = () => addKeyframeAtCurrentFrame(node);
+
+    const delBtn = document.createElement("button");
+    delBtn.style.cssText = kfBtnSt + ";background:#3a1a1a;border-color:#6a2a2a;";
+    delBtn.textContent = t("kfDelBtn");
+    delBtn.title = t("kfDelTooltip");
+    delBtn.onclick = () => deleteKeyframeAtCurrentFrame(node);
+
+    const sep1 = document.createElement("span");
+    sep1.style.cssText = "color:#45475a;font-size:11px;";
+    sep1.textContent = "|";
+
+    const addCamBtn = document.createElement("button");
+    addCamBtn.style.cssText = kfBtnSt + ";background:#1a2a3a;border-color:#2a5a7a;";
+    addCamBtn.textContent = t("kfAddCamBtn");
+    addCamBtn.title = t("kfAddCamTooltip");
+    addCamBtn.onclick = () => addCameraKeyframeAtCurrentFrame(node);
+
+    const delCamBtn = document.createElement("button");
+    delCamBtn.style.cssText = kfBtnSt + ";background:#2a1a2a;border-color:#5a2a5a;";
+    delCamBtn.textContent = t("kfDelCamBtn");
+    delCamBtn.title = t("kfDelCamTooltip");
+    delCamBtn.onclick = () => deleteCameraKeyframeAtCurrentFrame(node);
+
+    const sep1b = document.createElement("span");
+    sep1b.style.cssText = "color:#45475a;font-size:11px;";
+    sep1b.textContent = "|";
+
+    const moveKeyBtn = document.createElement("button");
+    moveKeyBtn.style.cssText = kfBtnSt;
+    moveKeyBtn.textContent = t("kfMoveKeyBtn");
+    moveKeyBtn.title = t("kfMoveKeyTooltip");
+    moveKeyBtn.onclick = () => {
+        node._kfMoveKeyMode = !node._kfMoveKeyMode;
+        moveKeyBtn.style.cssText = node._kfMoveKeyMode
+            ? kfBtnSt + ";background:#3a2a4a;border-color:#8a5a9a;outline:1px solid #aa77cc;"
+            : kfBtnSt;
+    };
+
+    const sep1c = document.createElement("span");
+    sep1c.style.cssText = "color:#45475a;font-size:11px;";
+    sep1c.textContent = "|";
+
+    const goToZeroBtn = document.createElement("button");
+    goToZeroBtn.style.cssText = kfBtnSt;
+    goToZeroBtn.textContent = t("kfGoToZeroBtn");
+    goToZeroBtn.title = t("kfGoToZeroTooltip");
+    goToZeroBtn.onclick = () => seekToFrame(node, 0);
+
+    const prevBtn = document.createElement("button");
+    prevBtn.style.cssText = kfBtnSt;
+    prevBtn.textContent = "◀";
+    prevBtn.title = "前のフレーム";
+    prevBtn.onclick = () => seekToFrame(node, Math.max(0, node._kfCurrentFrame - 1));
+
+    const frameInput = document.createElement("input");
+    frameInput.type = "number";
+    frameInput.min = "0";
+    frameInput.style.cssText = "width:44px;background:#1a1a2a;border:1px solid #45475a;border-radius:3px;color:#cdd6f4;font-size:11px;padding:2px 4px;text-align:center;";
+    frameInput.value = "0";
+    frameInput.addEventListener("change", () => {
+        const f = parseInt(frameInput.value) || 0;
+        seekToFrame(node, f);
+    });
+    node._kfCurrentFrameEl = frameInput;
+
+    const frameSlash = document.createElement("span");
+    frameSlash.style.cssText = "color:#888;font-size:11px;";
+    frameSlash.textContent = "/";
+
+    const totalInput = document.createElement("input");
+    totalInput.type = "number";
+    totalInput.min = "2";
+    totalInput.style.cssText = "width:44px;background:#1a1a2a;border:1px solid #45475a;border-radius:3px;color:#cdd6f4;font-size:11px;padding:2px 4px;text-align:center;";
+    totalInput.value = "60";
+    totalInput.addEventListener("change", () => {
+        node._kfTotalFrames = Math.max(2, parseInt(totalInput.value) || 60);
+        const w = findWidget(node, "layer_config");
+        if (w) {
+            let cfg = {}; try { cfg = JSON.parse(w.value || "{}"); } catch (_) {}
+            cfg.kf_total_frames = node._kfTotalFrames;
+            w.value = JSON.stringify(cfg);
+        }
+        updateTimelineCanvas(node);
+    });
+    node._kfTotalFramesEl = totalInput;
+
+    const nextBtn = document.createElement("button");
+    nextBtn.style.cssText = kfBtnSt;
+    nextBtn.textContent = "▶";
+    nextBtn.title = "次のフレーム";
+    nextBtn.onclick = () => seekToFrame(node, node._kfCurrentFrame + 1);
+
+    const sep2 = document.createElement("span");
+    sep2.style.cssText = "color:#45475a;font-size:11px;margin-left:auto;";
+    sep2.textContent = "|";
+
+    const playBtn = document.createElement("button");
+    playBtn.style.cssText = kfBtnSt + ";background:#1a2a4a;border-color:#2a4a8a;min-width:54px;";
+    playBtn.textContent = t("kfPlayBtn");
+    playBtn.title = t("kfPlayTooltip");
+    playBtn.onclick = () => {
+        if (node._kfPlaying) stopPlayback(node);
+        else startPlayback(node);
+    };
+    node._kfPlayBtn = playBtn;
+
+    const stopBtn = document.createElement("button");
+    stopBtn.style.cssText = kfBtnSt;
+    stopBtn.textContent = t("kfStopBtn");
+    stopBtn.title = t("kfStopTooltip");
+    stopBtn.onclick = () => stopPlayback(node);
+
+    rowA.append(addBtn, delBtn, sep1, addCamBtn, delCamBtn, sep1b, moveKeyBtn, sep1c, goToZeroBtn, prevBtn, frameInput, frameSlash, totalInput, nextBtn);
+
+    // ---- タイムラインキャンバス ----
+    const tlCanvas = document.createElement("canvas");
+    tlCanvas.width  = 450;
+    tlCanvas.height = 34;
+    tlCanvas.style.cssText = "width:100%;height:34px;cursor:pointer;border-radius:3px;display:block;";
+    node._kfTimelineCanvas = tlCanvas;
+    setupTimelineInteraction(tlCanvas, node);
+
+    // ---- 行B: FPS + エクスポート ----
+    const rowB = document.createElement("div");
+    rowB.style.cssText = "display:flex;align-items:center;gap:4px;height:26px;";
+
+    const clearBtn = document.createElement("button");
+    clearBtn.style.cssText = kfBtnSt + ";background:#3a2a1a;border-color:#8a5a2a;";
+    clearBtn.textContent = t("kfClearBtn");
+    clearBtn.title = t("kfClearTooltip");
+    clearBtn.onclick = () => {
+        if (!confirm(t("kfClearTooltip") + "\n" + (node._keyframes?.length ? `(${node._keyframes.length}件)` : ""))) return;
+        node._keyframes = [];
+        node._kfCurrentFrame = 0;
+        if (node._kfCurrentFrameEl) node._kfCurrentFrameEl.value = "0";
+        const w = findWidget(node, "layer_config");
+        if (w) {
+            let cfg = {}; try { cfg = JSON.parse(w.value || "{}"); } catch (_) {}
+            delete cfg.keyframes;
+            w.value = JSON.stringify(cfg);
+        }
+        updateTimelineCanvas(node);
+    };
+
+    const fpsLabel = document.createElement("span");
+    fpsLabel.style.cssText = "font-size:11px;color:#cdd6f4;flex-shrink:0;";
+    fpsLabel.textContent = t("kfFpsLabel") + ":";
+
+    const fpsInput = document.createElement("input");
+    fpsInput.type = "number";
+    fpsInput.min  = "1";
+    fpsInput.max  = "60";
+    fpsInput.style.cssText = "width:38px;background:#1a1a2a;border:1px solid #45475a;border-radius:3px;color:#cdd6f4;font-size:11px;padding:2px 4px;text-align:center;";
+    fpsInput.value = "24";
+    fpsInput.addEventListener("change", () => {
+        node._kfFps = Math.max(1, Math.min(60, parseInt(fpsInput.value) || 24));
+        const w = findWidget(node, "layer_config");
+        if (w) {
+            let cfg = {}; try { cfg = JSON.parse(w.value || "{}"); } catch (_) {}
+            cfg.kf_fps = node._kfFps;
+            w.value = JSON.stringify(cfg);
+        }
+    });
+    node._kfFpsEl = fpsInput;
+
+    const progressEl = document.createElement("span");
+    progressEl.style.cssText = "font-size:10px;color:#888;min-width:50px;";
+    node._kfProgressEl = progressEl;
+
+    // ---- プロジェクト保存ボタン ----
+    const saveProjBtn = document.createElement("button");
+    saveProjBtn.style.cssText = kfBtnSt + ";background:#2a1a4a;border-color:#5a3a8a;";
+    saveProjBtn.textContent = t("kfSaveProjBtn");
+    saveProjBtn.title = t("kfSaveProjTooltip");
+    saveProjBtn.onclick = async () => {
+        saveProjBtn.disabled = true;
+        const ok = await saveKeyframeProject(node);
+        saveProjBtn.disabled = false;
+        if (ok) {
+            saveProjBtn.style.outline = "2px solid #aa88ff";
+            setTimeout(() => { saveProjBtn.style.outline = "none"; }, 800);
+        }
+    };
+
+    const exportBtn = document.createElement("button");
+    exportBtn.style.cssText = kfBtnSt + ";background:#1a2a4a;border-color:#2a4a8a;";
+    exportBtn.textContent = t("kfExportBtn");
+    exportBtn.title = t("kfExportTooltip");
+    exportBtn.onclick = async () => {
+        if (!(node._keyframes?.length >= 2)) {
+            alert(t("kfNoKeyframes") + " (最低2つ必要)");
+            return;
+        }
+        exportBtn.disabled = true;
+        exportBtn.textContent = t("kfExporting");
+        try {
+            const blob = await exportVideoWebM(node, (f, total) => {
+                if (node._kfProgressEl) node._kfProgressEl.textContent = `${f}/${total}`;
+            });
+            if (blob) {
+                const url = URL.createObjectURL(blob);
+                const a   = document.createElement("a");
+                a.href = url; a.download = "animation.webm";
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+            }
+        } catch (e) {
+            console.error("[PSDFigureCreator] exportVideoWebM error:", e);
+            alert("Export failed: " + e.message);
+        }
+        if (node._kfProgressEl) node._kfProgressEl.textContent = "";
+        exportBtn.textContent = t("kfExportBtn");
+        exportBtn.disabled = false;
+    };
+
+    const rowBSpacer = document.createElement("span");
+    rowBSpacer.style.cssText = "flex:1;";
+
+    rowB.append(clearBtn, fpsLabel, fpsInput, saveProjBtn, exportBtn, rowBSpacer, progressEl, playBtn, stopBtn);
+
+    panel.append(rowA, tlCanvas, rowB);
+    return panel;
+}
 
 // ================================================
 // プレビューエリアDOMを作成
@@ -4535,7 +5395,8 @@ app.registerExtension({
                 ? _origComputeSize.call(this, out)
                 : (out || new Float32Array(2));
             size[0] = PREVIEW_NODE_W;
-            const minH = UI_WIDGET_H + 80;
+            const kfExtra = (this._kfPanelVisible ? KF_PANEL_H : 0);
+            const minH = UI_WIDGET_H + kfExtra + 80;
             if (size[1] < minH) size[1] = minH;
             return size;
         };
@@ -4719,7 +5580,7 @@ app.registerExtension({
 
             row2.append(libBtn, poseSnapBtn, setupBtn, nodeLblBtn, rpBtn, rcBtn);
 
-            // ---- 行3: Capture ----
+            // ---- 行3: Capture + KF パネルトグル ----
             const row3 = document.createElement("div");
             row3.style.cssText = "display:flex;gap:4px;padding:2px 6px 0;box-sizing:border-box;width:100%;height:30px;flex-shrink:0;";
 
@@ -4746,17 +5607,44 @@ app.registerExtension({
                 }, 1800);
             };
 
-            row3.append(captureBtn);
+            // ---- キーフレームパネルトグルボタン ----
+            node._kfPanelVisible = false;
+            node._keyframes      = [];
+            node._kfCurrentFrame = 0;
+            node._kfTotalFrames  = 60;
+            node._kfFps          = 24;
+            node._kfPlaying      = false;
+            node._kfPlayRaf      = null;
+
+            const kfToggleBtn = document.createElement("button");
+            kfToggleBtn.style.cssText = btnStyle + ";flex-shrink:0;padding:4px 8px;";
+            kfToggleBtn.textContent = t("kfPanelBtn");
+            kfToggleBtn.title = t("kfPanelTooltip");
+
+            // ---- キーフレームパネル ----
+            const kfPanel = buildKeyframePanel(node);
+
+            kfToggleBtn.onclick = () => {
+                node._kfPanelVisible = !node._kfPanelVisible;
+                kfPanel.style.display = node._kfPanelVisible ? "flex" : "none";
+                kfToggleBtn.style.outline = node._kfPanelVisible ? "2px solid #aa88ff" : "none";
+                node.size[1] = node.computeSize()[1];
+                app.graph?.setDirtyCanvas(true, true);
+            };
+
+            row3.append(captureBtn, kfToggleBtn);
 
             // ---- プレビュー ----
             const previewWrap = buildPreviewWidget(node);
 
-            uiWrap.append(row2, row3, previewWrap);
+            uiWrap.append(row2, row3, kfPanel, previewWrap);
 
             node.addDOMWidget("psd_ui", "customtext", uiWrap, {
                 getValue()    { return ""; },
                 setValue()    {},
-                computeSize(w) { return [w, UI_WIDGET_H]; },
+                computeSize(w) {
+                    return [w, UI_WIDGET_H + (node._kfPanelVisible ? KF_PANEL_H : 0)];
+                },
             });
 
             // ---- output_width / output_height 変更時にフレームを即再描画 ----
@@ -4802,6 +5690,26 @@ app.registerExtension({
             this.size[1] = this.computeSize()[1];
 
             const node = this;
+
+            // キーフレーム状態を layer_config から復元
+            const lw = findWidget(node, "layer_config");
+            if (lw) {
+                let cfg = {};
+                try { cfg = JSON.parse(lw.value || "{}"); } catch (_) {}
+                if (Array.isArray(cfg.keyframes) && cfg.keyframes.length > 0) {
+                    node._keyframes = JSON.parse(JSON.stringify(cfg.keyframes));
+                    updateTimelineCanvas(node);
+                }
+                if (cfg.kf_total_frames !== undefined) {
+                    node._kfTotalFrames = cfg.kf_total_frames;
+                    if (node._kfTotalFramesEl) node._kfTotalFramesEl.value = cfg.kf_total_frames;
+                }
+                if (cfg.kf_fps !== undefined) {
+                    node._kfFps = cfg.kf_fps;
+                    if (node._kfFpsEl) node._kfFpsEl.value = cfg.kf_fps;
+                }
+            }
+
             const fname = findWidget(node, "psd_filename")?.value;
             if (fname) {
                 node._psdFilename = fname;
@@ -4825,6 +5733,7 @@ app.registerExtension({
         const origRemoved = nodeType.prototype.onRemoved;
         nodeType.prototype.onRemoved = function () {
             if (origRemoved) origRemoved.apply(this, arguments);
+            stopPlayback(this);
             if (this._layerImages) {
                 for (const entry of Object.values(this._layerImages)) {
                     if (entry.objUrl) URL.revokeObjectURL(entry.objUrl);

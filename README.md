@@ -16,7 +16,8 @@ and compositing the result as `IMAGE` + `MASK` outputs.
   - **MR** (red/orange) — move + rotate
   - **SW** (green) — switch: rotate a handle to step through up to 12 slots; use **+L** to add an individual layer (1 slot), **+P** to add a group/folder expanded per-layer (Piece, N slots), or **+C** to add a group/folder composited as one (Composite, 1 slot)
 - **Setup mode / Pose mode** — configure rigs in setup mode, animate in pose mode
-- **Library** — save/load named model files (`.psd-model.json`) and pose files
+- **Keyframe animation** — record poses at specific frames, interpolate between keyframes (linear lerp for position, shortest-path for angles), preview playback at configurable FPS, and export as WebM video (Chrome/Edge). Save/load full animation projects to the library.
+- **Library** — save/load named model files (`.psd-model.json`), pose files, and keyframe animation projects
 - **Background options** — checker pattern / solid color / local image / upstream `IMAGE` node
 - **Capture → Queue Prompt** — bake the current canvas state to an output image
 - **i18n** — UI language auto-detected from `navigator.language` (Japanese / English / Simplified Chinese)
@@ -112,8 +113,13 @@ A ready-to-use sample is bundled in the `user_data/` directory:
 
 ```
 [✨ New] [📂 PSD file]  [⟳]
-[Editor]               [RC]
+[Editor]          [⏱] [RC]
 [📸 Capture]
+ ┌──────────────────────────────────┐   ← keyframe panel (⏱ to toggle)
+ │ [+KF][🗑KF]|[+CK][-CK]|[↔]|[0][◀][f]/[t][▶] │
+ │ ◆────◆──────── timeline ────────── │
+ │ [New] FPS[24] [💾Proj] [🎬WebM]  [▶▶] [■] │
+ └──────────────────────────────────┘
  ┌────────────────────────┐
  │  Preview canvas        │
  └────────────────────────┘
@@ -122,6 +128,7 @@ A ready-to-use sample is bundled in the `user_data/` directory:
 ```
 
 - **Editor** — opens the full-screen setup/pose modal
+- **⏱** — toggle the keyframe animation panel
 - **RC** — reset camera (pan + zoom)
 - **✨ New** — clears all rigging, SW layers, and poses (prompts for confirmation)
 
@@ -156,6 +163,57 @@ Drag the origin in setup mode to reposition; drag the handle to adjust radius an
 | `+C` | Custom group or PSD folder (Composite) | `[C]` | 1 slot (all members rendered together) |
 
 A slot entry whose group or folder has been deleted shows a red row background and a ⚠ icon (orphaned). Delete it manually before adding new entries.
+
+---
+
+## Keyframe Animation
+
+Toggle the keyframe panel with the **⏱** button on the node.
+
+### Controls
+
+**Row A**
+
+| Button / Field | Action |
+|---|---|
+| `+KF` | Record the current pose (visibility, position, angles) at the current frame |
+| `🗑KF` | Delete the pose keyframe at the current frame (camera data preserved) |
+| `+CK` | Record a camera keyframe (zoom / x / y / roll) at the current frame |
+| `-CK` | Delete the camera keyframe at the current frame (pose data preserved) |
+| `↔` | Toggle key-move mode: when ON, drag keyframe diamonds on the timeline to move them; playhead scrubbing is disabled |
+| `0` | Jump to frame 0 |
+| `◀` / `▶` | Step one frame back / forward |
+| Frame input | Jump to a specific frame |
+| Total input | Set total frame count |
+
+**Row B**
+
+| Button / Field | Action |
+|---|---|
+| `New` | Clear all keyframes and reset to frame 0 (confirm required) |
+| `FPS` | Playback and export frame rate (default 24) |
+| `💾 Proj` | Save the animation project to the library (name: `project-YYYYMMDDHHMMSS`) |
+| `🎬 WebM` | Export as a WebM video file (Chrome/Edge recommended) |
+| `▶` / `■` | Start / stop playback preview (`▶` is double-width) |
+
+### Timeline
+
+Click or drag the timeline canvas to scrub to any frame. Recorded keyframes appear as **◆** markers.
+
+### Interpolation
+
+| Property | Method |
+|---|---|
+| Position (tx / ty) | Linear lerp |
+| Rotation angle | Shortest-path angle lerp (handles 0 ↔ 360° wrap) |
+| SW handle angle | Shortest-path angle lerp |
+| Visibility | Step: value of the previous keyframe |
+
+### Project Save / Load
+
+`💾 Proj` saves keyframe data (`keyframes`, `kf_total_frames`, `kf_fps`) to the library's **Poses** panel as `_type: "kf_project"`. Loading it from the library restores the full timeline and applies frame 0's pose to the canvas.
+
+Keyframes are also persisted in `layer_config.keyframes`, so they are saved and restored with the ComfyUI workflow JSON automatically.
 
 ---
 
@@ -228,7 +286,17 @@ psd-image-loader/
         // mode defaults to "piece" when omitted (backward compatible)
       ]
     }]
-  }]
+  }],
+  "keyframes": [
+    {
+      "frame": 0,
+      "visibility": { "<layerId>": true },
+      "pose":       { "<layerId>": { "angle": 0, "tx": 0, "ty": 0 } },
+      "sw_angles":  { "<pointId>": 0 }
+    }
+  ],
+  "kf_total_frames": 60,
+  "kf_fps": 24
 }
 ```
 
