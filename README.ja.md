@@ -91,6 +91,26 @@ ComfyUI を再起動します。ノードは **image/psd → PSD Figure Creator*
 
 ---
 
+## 別PCへの移行
+
+別の PC に環境を移す場合は、以下の2つを別々に転送する必要があります。
+
+### 1. PSD ファイル
+PSD ファイルは ComfyUI の `input/psd/` ディレクトリに保存されています。
+```
+ComfyUI/input/psd/  →  新PC の ComfyUI/input/psd/ にコピー
+```
+
+### 2. ライブラリデータ（モデル・ポーズ）
+ライブラリデータはカスタムノードフォルダ内の `user_data/` に保存されています。
+```
+ComfyUI/custom_nodes/PSD-Figure-Creator/user_data/  →  新PC の同じパスにコピー
+```
+
+> **ワークフロー JSON を持ち込む場合の注意:** ワークフローに `psd_filename` が保存されていても、PSD ファイルが新PC の `input/psd/` になければ「レイヤー情報の取得に失敗」のアラートが出ます。その場合は **Setup ボタンをそのまま押す**とモーダルが開くので、「Open PSD」ボタンから PSD を再選択してください（v0.5.2 以降）。
+
+---
+
 ## ノードの入出力
 
 | パラメータ | 型 | 説明 |

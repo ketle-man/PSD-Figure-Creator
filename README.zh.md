@@ -91,6 +91,26 @@ pip install psd-tools
 
 ---
 
+## 迁移到新电脑
+
+迁移到新电脑时，需要分别传输以下两项内容。
+
+### 1. PSD 文件
+PSD 文件保存在 ComfyUI 的 `input/psd/` 目录中。
+```
+ComfyUI/input/psd/  →  复制到新电脑的同路径下
+```
+
+### 2. 库数据（模型与姿势）
+库数据保存在自定义节点文件夹内的 `user_data/` 目录中。
+```
+ComfyUI/custom_nodes/PSD-Figure-Creator/user_data/  →  复制到新电脑的同路径下
+```
+
+> **携带工作流 JSON 时的注意事项：** 如果工作流中已保存 `psd_filename`，但新电脑的 `input/psd/` 中不存在该 PSD 文件，则会弹出「获取图层信息失败」的提示。此时直接点击 **Setup** 按钮，编辑器仍会以空图层状态打开（v0.5.2 起），然后通过 **Open PSD** 按钮重新选择文件即可。
+
+---
+
 ## 节点输入输出
 
 | 参数 | 类型 | 说明 |

@@ -91,6 +91,26 @@ A ready-to-use sample is bundled in the `user_data/` directory:
 
 ---
 
+## Moving to a New PC
+
+Two things must be transferred separately when setting up on a new machine.
+
+### 1. PSD files
+PSD files live in ComfyUI's `input/psd/` directory.
+```
+ComfyUI/input/psd/  →  copy to the same path on the new PC
+```
+
+### 2. Library data (models & poses)
+Library data is stored in `user_data/` inside the custom node folder.
+```
+ComfyUI/custom_nodes/PSD-Figure-Creator/user_data/  →  copy to the same path on the new PC
+```
+
+> **Bringing a workflow JSON:** If a workflow has `psd_filename` set but the PSD file is missing on the new PC, you'll see a "Failed to fetch layer info" alert. Just press **Setup** again — the modal will open with empty layers (v0.5.2+), and you can use the **Open PSD** button to re-select the file.
+
+---
+
 ## Node Inputs & Outputs
 
 | Parameter | Type | Description |

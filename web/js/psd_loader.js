@@ -4395,7 +4395,10 @@ async function openLayerModal(node) {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             layers = data.layers; node._psdLayers = layers; node._psdW = data.width; node._psdH = data.height;
-        } catch (err) { alert(t("layerFetchFailed", err.message)); return; }
+        } catch (err) {
+            alert(t("layerFetchFailed", err.message));
+            // PSDが見つからなくてもモーダルは開く（新PC移行時など）
+        }
     }
 
     let existingConfig = {};
