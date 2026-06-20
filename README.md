@@ -26,9 +26,17 @@ and compositing the result as `IMAGE` + `MASK` outputs.
 
 ## Screenshots
 
+### Animation output
+
+![Animation output](docs/Animation.gif)
+
 ### Node
 
-![Node overview](docs/1_node.png)
+![Node overview](docs/0_node.png)
+
+### Node — with keyframe animation panel
+
+![Node with keyframe panel expanded](docs/1_node.png)
 
 ### Editor — Layers tab (Setup mode)
 
