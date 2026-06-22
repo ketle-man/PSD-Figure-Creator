@@ -14,7 +14,8 @@ and compositing the result as `IMAGE` + `MASK` outputs.
 - **Rigging system** — place control points on layers directly on the canvas:
   - **R** (blue) — rotation only
   - **MR** (red/orange) — move + rotate
-  - **SW** (green) — switch: rotate a handle to step through up to 12 slots; use **+L** to add an individual layer (1 slot), **+P** to add a group/folder expanded per-layer (Piece, N slots), or **+C** to add a group/folder composited as one (Composite, 1 slot)
+  - **LSW** (green) — layer switch: rotate a handle to step through up to 12 slots; use **+L** to add an individual layer (1 slot), **+P** to add a group/folder expanded per-layer (Piece, N slots), or **+C** to add a group/folder composited as one (Composite, 1 slot)
+  - **PSW** (white) — pose switch: rotate a handle to apply registered poses; register R/MR pose states to up to 12 slots in 30° increments
 - **Setup mode / Pose mode** — configure rigs in setup mode, animate in pose mode
 - **Keyframe animation** — record poses at specific frames, interpolate between keyframes (linear lerp for position, shortest-path for angles), preview playback at configurable FPS, and export as WebM video (Chrome/Edge). Save/load full animation projects to the library.
 - **Library** — save/load named model files (`.psd-model.json`), pose files, and keyframe animation projects
@@ -164,9 +165,10 @@ ComfyUI/custom_nodes/PSD-Figure-Creator/user_data/  →  copy to the same path o
 
 | Tab | Contents |
 |---|---|
-| Layers | Layer tree, custom group management, rig mode buttons (R / MR / SW) |
+| Layers | Layer tree, custom group management, rig mode buttons (R / MR / LSW / PSW) |
 | Parent | Parent–child hierarchy for propagated transforms |
-| Switch | SW layer list and group-slot editor |
+| LSwitch | LSW layer list and group-slot editor |
+| PSwitch | PSW point list, slot management, and pose registration |
 
 ---
 
@@ -178,11 +180,11 @@ Blue dot. Drag in pose mode to rotate the layer around the placed pivot.
 ### MR — Move + Rotate
 Red origin + orange handle. Drag the handle to move and rotate simultaneously.
 
-### SW — Switch
+### LSW — Layer Switch
 Green origin + cyan handle. Rotating the handle steps through registered slots in 30° increments (maximum 12 slots × 30° = 360°).  
 Drag the origin in setup mode to reposition; drag the handle to adjust radius and initial angle.
 
-**Slot entry types** (configured in the Switch tab):
+**Slot entry types** (configured in the LSwitch tab):
 
 | Button | Entry | Badge | Slots |
 |---|---|---|---|
@@ -191,6 +193,18 @@ Drag the origin in setup mode to reposition; drag the handle to adjust radius an
 | `+C` | Custom group or PSD folder (Composite) | `[C]` | 1 slot (all members rendered together) |
 
 A slot entry whose group or folder has been deleted shows a red row background and a ⚠ icon (orphaned). Delete it manually before adding new entries.
+
+### PSW — Pose Switch
+White origin + purple handle. Rotating the handle applies the registered pose for the active slot.
+
+**Usage** (configured in the PSwitch tab):
+
+1. In Setup mode, click the **PSW** button (a PSW layer is created automatically on first use), then click the canvas to place a point
+2. Use `+` to add slots in 30° increments (up to 12 slots); `−` removes the last slot
+3. In Pose mode, set the desired pose, select a slot, and click **`+pset`** to register it; **`−pset`** clears it
+4. The handle angle determines the active slot: 0°–30° → slot 0, 30°–60° → slot 1, and so on
+
+Multiple PSW points operate independently and their poses are composited together.
 
 ---
 
@@ -312,6 +326,18 @@ psd-image-loader/
         { "type": "custom_group", "id": "...", "mode": "piece" },     // +P — 1 slot per member layer
         { "type": "psd_group",    "id": "...", "mode": "composite" }  // +C — 1 slot (composited)
         // mode defaults to "piece" when omitted (backward compatible)
+      ]
+    }]
+  }],
+  "psw_layers": [{
+    "id": "...", "name": "PSW1",
+    "points": [{
+      "id": "...", "name": "PSW1",
+      "x": 512, "y": 512,
+      "radius": 80, "angle": 0,
+      "slots": [
+        { "degree": 0,  "pose": null },                          // empty slot
+        { "degree": 30, "pose": { "<layerId>": { "angle": 0.5, "tx": 10, "ty": -5 } } }
       ]
     }]
   }],
