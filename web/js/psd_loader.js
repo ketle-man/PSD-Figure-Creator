@@ -2197,6 +2197,18 @@ class PSDModal {
         this._btnMR  = mkSetupBtn("MR",  'mr',  "#3a1a1a");
         this._btnSW  = mkSetupBtn("LSW", 'sw',  "#1a3a1a");
         this._btnPSW = mkSetupBtn("PSW", 'psw', "#3a1a3a");
+        this._btnPSW.onclick = () => {
+            // PSWレイヤーが無ければ自動作成、あれば先頭を選択
+            if (this.state.pswLayers.length === 0) {
+                this._createPswLayer();
+            } else if (!this._selectedPswLayerId) {
+                this._selectedPswLayerId = this.state.pswLayers[0].id;
+                if (this._activeTab === 'psw') this._renderPswTab();
+            }
+            this._setupPointType = 'psw';
+            this._updateSetupBtns();
+            this._drawPreview();
+        };
         const delRigBtn = document.createElement("button");
         delRigBtn.className = "psd-btn";
         delRigBtn.textContent = t("deleteRigBtn");
@@ -2566,9 +2578,10 @@ class PSDModal {
                     ["表示切替", "レイヤー行の 👁 アイコンをクリック"],
                     ["名前変更", "レイヤー名をダブルクリックして編集"],
                     ["順序変更", "レイヤー行をドラッグ&ドロップ"],
-                    ["カスタムグループ作成", "レイヤーを複数選択して「グループ作成」ボタン — スイッチタブでレイヤー単位に展開可能"],
+                    ["カスタムグループ作成", "レイヤーを複数選択して「グループ作成」ボタン — Lスイッチタブでレイヤー単位に展開可能"],
                     ["グループ解除", "カスタムグループを選択して「グループ解除」ボタン"],
-                    ["SWレイヤー追加/削除", "「SW追加」「SW削除」ボタン（スイッチタブで設定）"],
+                    ["LSWレイヤー追加/削除", "「SW追加」「SW削除」ボタン（Lスイッチタブで設定）"],
+                    ["PSWレイヤー追加/削除", "「PSW追加」「PSW削除」ボタン（Pスイッチタブで設定）"],
                 ],
             },
             {
@@ -2580,10 +2593,10 @@ class PSDModal {
                 ],
             },
             {
-                title: "スイッチタブ",
+                title: "Lスイッチ（LSW）タブ",
                 rows: [
-                    ["SWレイヤー選択", "左列でSWレイヤーを選択すると右列にSWポイントが表示される"],
-                    ["SWポイント追加", "Setupモードで SW ボタンを選択してキャンバスをクリック"],
+                    ["LSWレイヤー選択", "左列でLSWレイヤーを選択すると右列にSWポイントが表示される"],
+                    ["LSWポイント追加", "Setupモードで LSW ボタンを押してキャンバスをクリック"],
                     ["エントリ追加", "+L: 個別レイヤーを1スロットとして追加 / +P: グループ/フォルダをメンバーごとに展開して追加（Piece） / +C: グループ/フォルダ全体を合成して1スロットとして追加（Composite）"],
                     ["エントリ削除", "エントリを選択して − ボタンで削除"],
                     ["バッジ", "[L] 個別レイヤー（1スロット） / [P] Pieceグループ（メンバー数スロット） / [C] Compositeグループ（常に1スロット）"],
@@ -2595,12 +2608,27 @@ class PSDModal {
                 ],
             },
             {
+                title: "Pスイッチ（PSW）タブ",
+                rows: [
+                    ["概要", "PSWポイントのハンドル角度に応じて、登録済みポーズ（R/MR状態）を自動的に適用するスイッチ"],
+                    ["PSWポイント追加", "Setupモードで PSW ボタンを押し（初回はレイヤー自動作成）、キャンバスをクリック"],
+                    ["スロット追加/削除", "+ ボタンで30°刻みのスロットを追加（最大12スロット）、− ボタンで最後のスロットを削除"],
+                    ["ポーズ登録", "Poseモードでポーズを決め、スロットを選択して +pset ボタンで現在のポーズを登録"],
+                    ["ポーズクリア", "スロットを選択して −pset ボタンで登録ポーズをクリア"],
+                    ["スロット選択", "スロット行をクリックするとハンドルがその角度に移動し、スロットがアクティブになる"],
+                    ["ポーズ状態", "スロット行は「登録済」または「未登録」と表示。現在アクティブなスロットはハイライト表示"],
+                    ["動作", "PSWハンドル角度が 0°〜30°→スロット0、30°〜60°→スロット1… のように切り替わる"],
+                    ["複数PSW", "複数のPSWポイントを配置した場合、それぞれが独立してポーズを合成する"],
+                ],
+            },
+            {
                 title: "Setup モード",
                 rows: [
                     ["有効化", "ヘッダーの Setup ボタンをクリック（もう一度クリックで通常モードに戻る）"],
                     ["R ポイント（青）", "回転軸。選択レイヤー上でクリックして配置。Pose モードでは回転ドラッグで角度を変える"],
                     ["MR ポイント（赤）", "平行移動軸（可動範囲円あり）。Pose モードで orange ハンドルをドラッグして移動"],
-                    ["SW ポイント（緑）", "スイッチポイント。ハンドル（水色）を回転させてアクティブスロットを切り替える"],
+                    ["LSW ポイント（緑）", "レイヤースイッチポイント。ハンドル（水色）を回転させてアクティブスロットを切り替える"],
+                    ["PSW ポイント（白）", "ポーズスイッチポイント。ハンドル（紫）を回転させて登録済みポーズを切り替える。PSWボタンを押してキャンバスをクリックで配置"],
                     ["ポイント削除", "対象レイヤーを選択して「🗑 削除」ボタン"],
                 ],
             },
@@ -2610,7 +2638,8 @@ class PSDModal {
                     ["有効化", "ヘッダーの Pose ボタンをクリック"],
                     ["回転 (R)", "青いリグポイントをドラッグして回転"],
                     ["移動 (MR)", "orange ハンドルをドラッグして平行移動（可動範囲円内で制限）"],
-                    ["スイッチ切替", "水色の SW ハンドルを回転"],
+                    ["スイッチ切替 (LSW)", "水色の LSW ハンドルを回転"],
+                    ["ポーズ切替 (PSW)", "紫の PSW ハンドルを回転。各スロットに登録されたポーズが自動適用される"],
                     ["ラベル表示", "🏷 ラベル ボタンでポイント上のレイヤー名を表示/非表示"],
                     ["ポーズ保存", "📷 ポーズ ボタン（右クリック: SW状態込みで保存）。サムネイルはラベル非表示で自動作成"],
                     ["ポーズリセット", "RP ボタンで全ポーズをリセット"],
@@ -2650,9 +2679,10 @@ class PSDModal {
                     ["切换可见性", "点击图层行的 👁 图标"],
                     ["重命名", "双击图层名称进行编辑"],
                     ["调整顺序", "拖放图层行"],
-                    ["创建自定义组", "多选图层后点击「创建组」按钮 — 可在切换选项卡中按图层展开"],
+                    ["创建自定义组", "多选图层后点击「创建组」按钮 — 可在L切换选项卡中按图层展开"],
                     ["解除组", "选中自定义组后点击「解除组」按钮"],
-                    ["SW图层", "使用「添加SW」/「删除SW」按钮（在切换选项卡中配置）"],
+                    ["LSW图层", "使用「添加SW」/「删除SW」按钮（在L切换选项卡中配置）"],
+                    ["PSW图层", "使用「添加PSW」/「删除PSW」按钮（在P切换选项卡中配置）"],
                 ],
             },
             {
@@ -2664,10 +2694,10 @@ class PSDModal {
                 ],
             },
             {
-                title: "切换选项卡",
+                title: "L切换（LSW）选项卡",
                 rows: [
-                    ["选择SW图层", "在左列选择SW图层，右列显示SW点"],
-                    ["添加SW点", "在Setup模式下选择SW后点击画布"],
+                    ["选择LSW图层", "在左列选择LSW图层，右列显示SW点"],
+                    ["添加LSW点", "在Setup模式下点击 LSW 按钮后点击画布"],
                     ["添加条目", "+L: 将单个图层添加为1个槽位 / +P: 将组/文件夹按图层逐一展开（Piece） / +C: 将组/文件夹整体合成为1个槽位（Composite）"],
                     ["删除条目", "选中条目后点击 − 删除"],
                     ["标记", "[L] 单个图层（1槽位） / [P] Piece组（成员数槽位） / [C] Composite组（始终1槽位）"],
@@ -2678,12 +2708,25 @@ class PSDModal {
                 ],
             },
             {
+                title: "P切换（PSW）选项卡",
+                rows: [
+                    ["概述", "根据PSW点手柄角度，自动切换已注册的姿势（R/MR状态）"],
+                    ["添加PSW点", "在Setup模式下点击 PSW 按钮（首次自动创建图层）后点击画布"],
+                    ["添加/删除插槽", "+ 按钮每次添加30°插槽（最多12个），− 按钮删除最后一个插槽"],
+                    ["注册姿势", "在Pose模式下摆好姿势，选中插槽后点击 +pset 注册当前姿势"],
+                    ["清除姿势", "选中插槽后点击 −pset 清除已注册的姿势"],
+                    ["选择插槽", "点击插槽行，手柄移动到对应角度并激活该插槽"],
+                    ["动作", "PSW手柄角度 0°~30°→插槽0，30°~60°→插槽1…依次切换"],
+                ],
+            },
+            {
                 title: "Setup 模式",
                 rows: [
                     ["启用", "点击标题栏的 Setup 按钮（再次点击退出）"],
                     ["R 点（蓝色）", "旋转轴，点击放置。Pose模式下拖动旋转"],
                     ["MR 点（红色）", "平移轴，Pose模式下拖动橙色手柄移动"],
-                    ["SW 点（绿色）", "切换点，旋转水色手柄切换活动插槽"],
+                    ["LSW 点（绿色）", "图层切换点，旋转水色手柄切换活动插槽"],
+                    ["PSW 点（白色）", "姿势切换点，旋转紫色手柄切换已注册的姿势。点击PSW按钮后在画布上点击放置"],
                     ["删除点", "选中图层后点击「🗑 删除」按钮"],
                 ],
             },
@@ -2693,7 +2736,8 @@ class PSDModal {
                     ["启用", "点击标题栏的 Pose 按钮"],
                     ["旋转 (R)", "拖动蓝色绑定点"],
                     ["平移 (MR)", "拖动橙色手柄（限于范围圆内）"],
-                    ["切换", "旋转水色 SW 手柄"],
+                    ["切换 (LSW)", "旋转水色 LSW 手柄"],
+                    ["姿势切换 (PSW)", "旋转紫色 PSW 手柄，自动应用各插槽注册的姿势"],
                     ["标签显示", "点击 🏷 标签 按钮切换点位标签显示"],
                     ["保存姿势", "点击 📷 姿势 按钮（右键: 含切换状态保存）。缩略图自动隐藏标签后生成"],
                     ["重置姿势", "点击 RP 重置所有姿势"],
@@ -2733,9 +2777,10 @@ class PSDModal {
                     ["Toggle Visibility", "Click the 👁 icon on a layer row"],
                     ["Rename", "Double-click the layer name"],
                     ["Reorder", "Drag & drop layer rows"],
-                    ["Create Custom Group", "Select multiple layers, then click 'Group' — expandable per-layer in the Switch tab"],
+                    ["Create Custom Group", "Select multiple layers, then click 'Group' — expandable per-layer in the LSwitch tab"],
                     ["Ungroup", "Select a custom group, then click 'Ungroup'"],
-                    ["SW Layer", "Use 'Add SW' / 'Del SW' buttons (configure in Switch tab)"],
+                    ["LSW Layer", "Use 'Add SW' / 'Del SW' buttons (configure in LSwitch tab)"],
+                    ["PSW Layer", "Use 'Add PSW' / 'Del PSW' buttons (configure in PSwitch tab)"],
                 ],
             },
             {
@@ -2747,10 +2792,10 @@ class PSDModal {
                 ],
             },
             {
-                title: "Switch Tab",
+                title: "LSwitch (LSW) Tab",
                 rows: [
-                    ["Select SW Layer", "Pick a SW layer in the left column to see its SW points"],
-                    ["Add SW Point", "In Setup mode, select SW then click the canvas"],
+                    ["Select LSW Layer", "Pick an LSW layer in the left column to see its SW points"],
+                    ["Add LSW Point", "In Setup mode, click the LSW button then click the canvas"],
                     ["Add Entry", "+L: add individual layer as 1 slot / +P: add group/folder expanded per-layer (Piece) / +C: add group/folder composited as 1 slot (Composite)"],
                     ["Remove Entry", "Select an entry and click − to remove"],
                     ["Badges", "[L] individual layer (1 slot) / [P] Piece group (N slots) / [C] Composite group (always 1 slot)"],
@@ -2762,12 +2807,26 @@ class PSDModal {
                 ],
             },
             {
+                title: "PSwitch (PSW) Tab",
+                rows: [
+                    ["Overview", "PSW automatically applies a registered pose (R/MR state) based on the PSW handle angle"],
+                    ["Add PSW Point", "In Setup mode, click the PSW button (auto-creates a layer on first use) then click the canvas"],
+                    ["Add/Remove Slots", "+ adds a 30° slot (up to 12 max); − removes the last slot"],
+                    ["Register Pose", "In Pose mode, set the desired pose, select a slot, then click +pset to register"],
+                    ["Clear Pose", "Select a slot and click −pset to clear its registered pose"],
+                    ["Select Slot", "Click a slot row to move the handle to that angle and activate the slot"],
+                    ["Behavior", "PSW handle 0°–30°→slot 0, 30°–60°→slot 1, and so on"],
+                    ["Multiple PSW", "Multiple PSW points can coexist and each applies its pose independently"],
+                ],
+            },
+            {
                 title: "Setup Mode",
                 rows: [
                     ["Enable", "Click the Setup button in the header (click again to exit)"],
                     ["R Point (blue)", "Rotation pivot. Click to place. In Pose mode, drag to rotate"],
                     ["MR Point (red)", "Translation axis with movement range. In Pose mode, drag orange handle"],
-                    ["SW Point (green)", "Switch point. Rotate the cyan handle to change active slot"],
+                    ["LSW Point (green)", "Layer switch point. Rotate the cyan handle to change active slot"],
+                    ["PSW Point (white)", "Pose switch point. Rotate the purple handle to apply registered poses. Click PSW button then click canvas to place"],
                     ["Delete Rig", "Select the target layer, then click '🗑 Delete'"],
                 ],
             },
@@ -2777,7 +2836,8 @@ class PSDModal {
                     ["Enable", "Click the Pose button in the header"],
                     ["Rotate (R)", "Drag the blue rig point"],
                     ["Translate (MR)", "Drag the orange handle (constrained to range circle)"],
-                    ["Switch", "Rotate the cyan SW handle"],
+                    ["Layer Switch (LSW)", "Rotate the cyan LSW handle"],
+                    ["Pose Switch (PSW)", "Rotate the purple PSW handle — registered poses are applied automatically"],
                     ["Labels", "Toggle layer name labels with 🏷 Labels"],
                     ["Save Pose", "Click 📷 Pose (right-click to include switch states). Thumbnail is captured with labels hidden automatically"],
                     ["Reset Pose", "Click RP to zero all poses"],
@@ -4153,6 +4213,7 @@ class PSDModal {
         this._setupPointType = null;
         this._updateSetupBtns();
         if (this._activeTab === 'psw') this._renderPswTab();
+        this._renderLayerTab();
         this._drawPreview();
     }
 
