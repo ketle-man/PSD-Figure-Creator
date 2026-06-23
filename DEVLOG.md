@@ -2,6 +2,29 @@
 
 ---
 
+## v0.6.6 — 2026-06-23
+
+### Fixed
+- **PSW ON/OFF 状態の保存・復元を全箇所に対応**:
+  - **ポーズ保存（通常・SW付き）**: `pswEnabled` を保存データに追加。ロード時に `node._pswEnabled` を復元しボタン色を更新
+  - **モデル保存**: `configObj.pswEnabled` を追加
+  - **モデルロード**: `data.layer_config.pswEnabled` を `node._pswEnabled` に復元
+  - **確定ボタン（onApplyConfig）**: 既存 `layer_config` の `pswEnabled` を新 `configObj` に引き継ぎ
+  - **キーフレーム**: 各フレームに `pswEnabled` を保存・ステップ補間で復元（前バージョンより）
+  - **プロジェクト（layer_config）**: トグル操作時に `layer_config` へ書き込み、`onConfigure` で復元（前バージョンより）
+
+---
+
+## v0.6.5 — 2026-06-23
+
+### Added
+- **PSW ON/OFF 状態をキーフレームに保存** — キーフレーム登録時に `pswEnabled` フラグを保存し、シーク・再生時に復元
+  - PSW トグルの ON/OFF がキーフレームごとに切り替わるアニメーションが可能
+  - `pswEnabled` はステップ補間（直前のキーフレームの値を次のキーフレームまで保持）
+  - `node._updatePswToggle` を外部参照可能にし、シーク時にボタンの青/赤表示を即時更新
+
+---
+
 ## v0.6.4 — 2026-06-23
 
 ### Added

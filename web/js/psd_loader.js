@@ -1522,6 +1522,9 @@ function _kfGetInterpolatedState(keyframes, frame) {
         psw_angles[id] = _kfLerpAngle(before.psw_angles?.[id] ?? 0, after.psw_angles?.[id] ?? 0, t);
     }
 
+    // pswEnabled はステップ（before を使用）
+    const pswEnabled = before.pswEnabled !== undefined ? before.pswEnabled : true;
+
     // visibility はステップ（before を使用）
     const visibility = JSON.parse(JSON.stringify(before.visibility || {}));
 
@@ -1554,7 +1557,7 @@ function _kfGetInterpolatedState(keyframes, frame) {
         }
     }
 
-    return { pose, sw_angles, psw_angles, visibility, camera };
+    return { pose, sw_angles, psw_angles, pswEnabled, visibility, camera };
 }
 
 // 指定フレームにシーク（layer_config を更新して再描画）
@@ -1602,6 +1605,12 @@ function seekToFrame(node, frame, { silent = false } = {}) {
                 w.value = JSON.stringify(config);
             }
 
+            // PSW トグル状態を復元
+            if (state.pswEnabled !== undefined) {
+                node._pswEnabled = state.pswEnabled;
+                if (node._updatePswToggle) node._updatePswToggle();
+            }
+
             // カメラ補間値を適用（silent でも WebM エクスポートが node._camera を参照するため常に適用）
             if (state.camera && node._camera) {
                 node._camera.zoom = state.camera.zoom;
@@ -1646,6 +1655,7 @@ function addKeyframeAtCurrentFrame(node) {
         pose:       JSON.parse(JSON.stringify(config.pose       || {})),
         sw_angles,
         psw_angles,
+        pswEnabled: node._pswEnabled !== false,
         visibility: JSON.parse(JSON.stringify(config.visibility || {})),
     };
     if (existingKf?.camera) kf.camera = existingKf.camera;
@@ -5001,6 +5011,7 @@ class PSDModal {
             if (existing.keyframes?.length)              configObj.keyframes       = existing.keyframes;
             if (existing.kf_total_frames !== undefined)  configObj.kf_total_frames = existing.kf_total_frames;
             if (existing.kf_fps !== undefined)           configObj.kf_fps          = existing.kf_fps;
+            if (existing.pswEnabled !== undefined)       configObj.pswEnabled      = existing.pswEnabled;
             w.value = JSON.stringify(configObj);
         }
 
@@ -5027,6 +5038,7 @@ class PSDModal {
             return e;
         });
         configObj.layer_order = buildOrder(this.layerTree);
+        configObj.pswEnabled  = this.node._pswEnabled !== false;
         const psdFilename = this.node._psdFilename || findWidget(this.node, "psd_filename")?.value || "";
         const content = { psd_filename: psdFilename, layer_config: configObj };
         const node = this.node;
@@ -5051,6 +5063,7 @@ class PSDModal {
         const content = {
             visibility: JSON.parse(JSON.stringify(config.visibility || {})),
             pose:       JSON.parse(JSON.stringify(config.pose       || {})),
+            pswEnabled: this.node._pswEnabled !== false,
             thumbnail:  null,
         };
         const node = this.node;
@@ -5102,6 +5115,7 @@ class PSDModal {
             pose:        JSON.parse(JSON.stringify(config.pose       || {})),
             sw_angles:   swAngles,
             psw_angles:  pswAngles,
+            pswEnabled:  this.node._pswEnabled !== false,
             thumbnail:   null,
         };
         const node = this.node;
@@ -5417,6 +5431,10 @@ class LibraryModal {
             if (data.layer_config) {
                 const lw = findWidget(node, "layer_config");
                 if (lw) lw.value = JSON.stringify(data.layer_config);
+                if (data.layer_config.pswEnabled !== undefined) {
+                    node._pswEnabled = data.layer_config.pswEnabled;
+                    if (node._updatePswToggle) node._updatePswToggle();
+                }
             }
             if (data.psd_filename) {
                 const fw = findWidget(node, "psd_filename");
@@ -5483,6 +5501,11 @@ class LibraryModal {
                             if (data.psw_angles[pt.id] !== undefined) pt.angle = data.psw_angles[pt.id];
                         });
                     });
+                }
+                if (data.pswEnabled !== undefined) {
+                    node._pswEnabled = data.pswEnabled;
+                    if (node._updatePswToggle) node._updatePswToggle();
+                    config.pswEnabled = data.pswEnabled;
                 }
                 const w = findWidget(node, "layer_config");
                 if (w) w.value = JSON.stringify(config);
@@ -6438,9 +6461,17 @@ app.registerExtension({
                     + `font-weight:bold;`;
                 pswToggleBtn.title = on ? "PSW ON — クリックでOFF（R/MR自由操作モード）" : "PSW OFF — クリックでON（プリセットポーズモード）";
             };
+            node._updatePswToggle = updatePswToggle;
             pswToggleBtn.onclick = () => {
                 node._pswEnabled = !node._pswEnabled;
                 updatePswToggle();
+                const _lw = findWidget(node, "layer_config");
+                if (_lw) {
+                    let _cfg = {};
+                    try { _cfg = JSON.parse(_lw.value || "{}"); } catch (_) {}
+                    _cfg.pswEnabled = node._pswEnabled;
+                    _lw.value = JSON.stringify(_cfg);
+                }
                 app.graph?.setDirtyCanvas(true, true);
             };
             updatePswToggle();
@@ -6545,6 +6576,10 @@ app.registerExtension({
                 if (cfg.kf_fps !== undefined) {
                     node._kfFps = cfg.kf_fps;
                     if (node._kfFpsEl) node._kfFpsEl.value = cfg.kf_fps;
+                }
+                if (cfg.pswEnabled !== undefined) {
+                    node._pswEnabled = cfg.pswEnabled;
+                    if (node._updatePswToggle) node._updatePswToggle();
                 }
             }
 

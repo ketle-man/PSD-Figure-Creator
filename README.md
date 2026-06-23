@@ -214,6 +214,13 @@ The **`PSW` toggle button** (left of the Capture button on the node) enables or 
 | ON (default) | Blue | PSW preset poses are applied based on handle angle |
 | OFF | Red | PSW disabled — all layers (including PSW-registered ones) are freely controlled by R/MR |
 
+The PSW ON/OFF state is saved and restored across all operations:
+
+- **Keyframes** — saved per frame; toggle switches automatically during playback
+- **Pose save (📷 Pose / right-click Pose+SW)** — toggle state is restored on load
+- **Model save/load** — toggle state is included in the model file
+- **Project save (ComfyUI workflow)** — persisted in `layer_config`
+
 ---
 
 ## Keyframe Animation
