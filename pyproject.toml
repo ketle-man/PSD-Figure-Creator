@@ -1,7 +1,7 @@
 [project]
 name = "psd-figure-creator"
 description = "Load a PSD file, place rig points on its layers, pose the figure interactively, and output IMAGE + MASK. Features layer viewer, custom groups, R/MR/SW rigging, clipping-mask support, and a model/pose library."
-version = "0.5.2"
+version = "0.6.6"
 license = {file = "LICENSE"}
 
 [project.urls]
