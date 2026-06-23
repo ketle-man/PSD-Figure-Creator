@@ -1133,7 +1133,7 @@ function drawNodeCanvas(node, { skipFrameLabel = false, targetCanvas = null } = 
         try { _config = JSON.parse(findWidget(node, "layer_config")?.value || "{}"); } catch (_) {}
         const _imgMap = getEffectiveImageMap(node, _config);
         // PSWポーズを適用した有効configでレンダリング
-        const _effectivePoseNode = computePswEffectivePose(_config.pose || {}, _config.psw_layers || []);
+        const _effectivePoseNode = computePswEffectivePose(_config.pose || {}, _config.psw_layers || [], null, node._pswEnabled !== false);
         const _renderConfigNode = Object.assign({}, _config, { pose: _effectivePoseNode });
         renderLayersToCtx(ctx, node._psdLayers, _imgMap, _renderConfigNode);
 
@@ -2014,7 +2014,8 @@ async function saveKeyframeProject(node) {
 // PSWポーズ補間：PSWハンドル角度からアクティブスロットのポーズを返す
 // basePose と合成する（PSWが優先）
 // ================================================
-function computePswEffectivePose(basePose, pswLayers, editingPswPointId = null) {
+function computePswEffectivePose(basePose, pswLayers, editingPswPointId = null, enabled = true) {
+    if (!enabled) return Object.assign({}, basePose);
     const PSW_STEP = Math.PI / 6;
     const result = Object.assign({}, basePose);
     for (const pswLayer of (pswLayers || [])) {
@@ -2643,7 +2644,8 @@ class PSDModal {
                     ["0°ポーズ登録 (+SLP)", "0°スロット選択時のみ有効。レイヤーツリーで対象レイヤーを選択し +SLP で1レイヤー分を登録（シングルレイヤーポーズ）"],
                     ["他スロットのポーズ登録", "スロット行をクリックして移動 → ✏編集 でポーズをロード → ポーズ調整 → ✓確定 で保存"],
                     ["ポーズクリア (−LP)", "スロットを選択して −LP ボタンで登録ポーズをクリア"],
-                    ["動作", "PSWハンドル角度が 0°〜30°→スロット0、30°〜60°→スロット1… のように切り替わる。可動域は登録スロット数×30°でロック"],
+                    ["動作", "PSWハンドル角度が 0°〜30°→スロット0、30°〜60°→スロット1… のように切り替わる。可動域は（スロット数−1）×30°でロック"],
+                    ["PSW トグル（ノード）", "ノードの Capture ボタン左の PSW ボタンで ON/OFF を切り替え。青=ON（プリセットポーズ適用）、赤=OFF（PSW無効・R/MRで全レイヤー自由操作）"],
                     ["複数PSW", "複数のPSWポイントを配置した場合、それぞれが独立してポーズを合成する"],
                 ],
             },
@@ -2744,7 +2746,8 @@ class PSDModal {
                     ["注册0°姿势 (+SLP)", "仅在选中0°插槽时有效。在图层树中选中目标图层，点击 +SLP 仅将该图层的姿势注册（单图层姿势）"],
                     ["注册其他插槽姿势", "点击插槽行选中 → 点击 ✏编辑 加载姿势 → 调整姿势 → 点击 ✓确定 保存"],
                     ["清除姿势 (−LP)", "选中插槽后点击 −LP 清除已注册的姿势"],
-                    ["动作", "PSW手柄角度 0°~30°→插槽0，30°~60°→插槽1…依次切换。可移动范围锁定为注册插槽数×30°"],
+                    ["动作", "PSW手柄角度 0°~30°→插槽0，30°~60°→插槽1…依次切换。可移动范围锁定为（插槽数−1）×30°"],
+                    ["PSW切换（节点）", "节点Capture按钮左侧的PSW按钮可切换ON/OFF。蓝色=ON（应用预设姿势），红色=OFF（禁用PSW，可用R/MR自由操作所有图层）"],
                 ],
             },
             {
@@ -2845,7 +2848,8 @@ class PSDModal {
                     ["Register Pose at 0° (+SLP)", "Only at slot 0. Select a layer in the layer tree then click +SLP to register that layer's pose (Single-Layer Pose)"],
                     ["Register Pose at other slots", "Click a slot row → click ✏Edit to load the pose → adjust → click ✓Confirm to save"],
                     ["Clear Pose (−LP)", "Select a slot and click −LP to clear its registered pose"],
-                    ["Behavior", "PSW handle 0°–30°→slot 0, 30°–60°→slot 1, and so on. Movement range is locked to (slot count) × 30°"],
+                    ["Behavior", "PSW handle 0°–30°→slot 0, 30°–60°→slot 1, and so on. Movement range is locked to (slot count − 1) × 30°"],
+                    ["PSW Toggle (node)", "The PSW button left of Capture on the node toggles ON/OFF. Blue=ON (preset poses active), Red=OFF (PSW disabled — all layers freely controlled by R/MR)"],
                     ["Multiple PSW", "Multiple PSW points can coexist and each applies its pose independently"],
                 ],
             },
@@ -3029,7 +3033,8 @@ class PSDModal {
         const imageMap = this._getEffectiveImageMap();
         // PSWポーズオーバーライドを適用（編集中ポイントは除外）
         const effectivePose = computePswEffectivePose(
-            config.pose || {}, config.psw_layers || [], this._pswEditingPointId
+            config.pose || {}, config.psw_layers || [], this._pswEditingPointId,
+            this.node._pswEnabled !== false
         );
         const renderConfig = Object.assign({}, config, { pose: effectivePose });
         renderLayersToCtx(ctx, this.layerTree, imageMap, renderConfig);
@@ -5567,7 +5572,7 @@ function setupPreviewInteraction(canvas, node) {
                 const { x: wx, y: wy } = toWorld(e.clientX, e.clientY);
                 const imgMap = getEffectiveImageMap(node, config);
                 // PSWポーズを適用した有効ポーズでヒットテスト
-                const effectivePose = computePswEffectivePose(config.pose || {}, config.psw_layers || []);
+                const effectivePose = computePswEffectivePose(config.pose || {}, config.psw_layers || [], null, node._pswEnabled !== false);
                 const hit = hitTestRig(wx, wy, node._psdLayers, imgMap,
                                        config.rigging || {}, effectivePose, 'pose', cam.zoom,
                                        config.layer_parent || {}, config.custom_groups || [], node._rigPointSize ?? 1.0,
@@ -6419,6 +6424,27 @@ app.registerExtension({
                 }, 1800);
             };
 
+            // ---- PSW トグルボタン ----
+            node._pswEnabled = true;
+            const pswToggleBtn = document.createElement("button");
+            const updatePswToggle = () => {
+                const on = node._pswEnabled;
+                pswToggleBtn.textContent = "PSW";
+                pswToggleBtn.style.cssText = btnStyle
+                    + `;flex-shrink:0;padding:4px 8px;`
+                    + `background:${on ? "#0a1e4a" : "#4a0a0a"};`
+                    + `border-color:${on ? "#3366cc" : "#cc3333"};`
+                    + `color:${on ? "#88aaff" : "#ff6666"};`
+                    + `font-weight:bold;`;
+                pswToggleBtn.title = on ? "PSW ON — クリックでOFF（R/MR自由操作モード）" : "PSW OFF — クリックでON（プリセットポーズモード）";
+            };
+            pswToggleBtn.onclick = () => {
+                node._pswEnabled = !node._pswEnabled;
+                updatePswToggle();
+                app.graph?.setDirtyCanvas(true, true);
+            };
+            updatePswToggle();
+
             // ---- キーフレームパネルトグルボタン ----
             node._kfPanelVisible = false;
             node._keyframes      = [];
@@ -6444,7 +6470,7 @@ app.registerExtension({
                 app.graph?.setDirtyCanvas(true, true);
             };
 
-            row3.append(captureBtn, kfToggleBtn);
+            row3.append(pswToggleBtn, captureBtn, kfToggleBtn);
 
             // ---- プレビュー ----
             const previewWrap = buildPreviewWidget(node);

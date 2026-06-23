@@ -207,6 +207,13 @@ White origin + purple handle. Rotating the handle applies the registered pose fo
 
 Multiple PSW points operate independently and their poses are composited together.
 
+The **`PSW` toggle button** (left of the Capture button on the node) enables or disables PSW globally:
+
+| State | Color | Effect |
+|---|---|---|
+| ON (default) | Blue | PSW preset poses are applied based on handle angle |
+| OFF | Red | PSW disabled — all layers (including PSW-registered ones) are freely controlled by R/MR |
+
 ---
 
 ## Keyframe Animation
