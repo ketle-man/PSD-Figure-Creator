@@ -200,9 +200,10 @@ White origin + purple handle. Rotating the handle applies the registered pose fo
 **Usage** (configured in the PSwitch tab):
 
 1. In Setup mode, click the **PSW** button (a PSW layer is created automatically on first use), then click the canvas to place a point
-2. Use `+` to add slots in 30° increments (up to 12 slots); `−` removes the last slot
-3. In Pose mode, set the desired pose, select a slot, and click **`+pset`** to register it; **`−pset`** clears it
-4. The handle angle determines the active slot: 0°–30° → slot 0, 30°–60° → slot 1, and so on
+2. Use **`+Slot`** to add slots in 30° increments (up to 12 slots); **`−Slot`** removes the last slot
+3. Select the **slot 0 (0°)** row, then in Pose mode use **`+MLP`** to register all layer poses, or select a layer in the layer tree and use **`+SLP`** to register a single layer's pose; **`−LP`** clears the slot
+4. For slots other than 0°: click the slot row → click **`✏ Edit`** to load the pose → adjust → click **`✓ Confirm`** to save
+5. The handle angle determines the active slot: 0°–30° → slot 0, 30°–60° → slot 1, and so on; the movement range is locked to **(slot count − 1) × 30°**
 
 Multiple PSW points operate independently and their poses are composited together.
 
@@ -249,6 +250,7 @@ Click or drag the timeline canvas to scrub to any frame. Recorded keyframes appe
 | Position (tx / ty) | Linear lerp |
 | Rotation angle | Shortest-path angle lerp (handles 0 ↔ 360° wrap) |
 | SW handle angle | Shortest-path angle lerp |
+| PSW handle angle | Shortest-path angle lerp |
 | Visibility | Step: value of the previous keyframe |
 
 ### Project Save / Load
@@ -346,7 +348,8 @@ psd-image-loader/
       "frame": 0,
       "visibility": { "<layerId>": true },
       "pose":       { "<layerId>": { "angle": 0, "tx": 0, "ty": 0 } },
-      "sw_angles":  { "<pointId>": 0 }
+      "sw_angles":  { "<pointId>": 0 },
+      "psw_angles": { "<pointId>": 0 }
     }
   ],
   "kf_total_frames": 60,
@@ -361,6 +364,19 @@ psd-image-loader/
 - **ComfyUI** (latest)
 - **Python 3.10+**
 - **psd-tools ≥ 1.9.0**
+
+---
+
+## Troubleshooting
+
+### `[INFO] Unknown image resource` / `Unknown tagged block` in the console
+
+```
+[INFO] Unknown image resource 1092
+[INFO] Unknown tagged block: <Tag.CAI: b'CAI '>, ...
+```
+
+These are informational messages from the **psd-tools** library (not errors). They appear when a PSD file contains metadata that psd-tools does not yet recognize — for example, resources added by recent versions of Photoshop such as Generative Fill (`CAI` tag). The file is still read and composited correctly; the unknown data is simply skipped. No action is required.
 
 ---
 
