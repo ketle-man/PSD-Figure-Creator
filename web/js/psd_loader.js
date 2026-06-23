@@ -507,7 +507,7 @@ function _drawRigLabel(ctx, x, y, label, isSelected, pointSize = 1.0) {
 //   showLabels: ポイント上にレイヤー名を表示するか
 //   renamed: { layerId: name } の名前上書きマップ
 // ================================================
-function drawRigOverlay(ctx, layers, imageMap, rigging, pose, mode, selectedLayerId, setupPointType, showLabels = false, renamed = {}, layerParentMap = {}, customGroups = [], pointSize = 1.0, swLayers = [], selectedSwPointInfo = null) {
+function drawRigOverlay(ctx, layers, imageMap, rigging, pose, mode, selectedLayerId, setupPointType, showLabels = false, renamed = {}, layerParentMap = {}, customGroups = [], pointSize = 1.0, swLayers = [], selectedSwPointInfo = null, pswLayers = [], selectedPswPointInfo = null) {
     if ((!rigging || Object.keys(rigging).length === 0) && swLayers.length === 0) return;
     const PR  = Math.round(7  * pointSize);
     const SR  = Math.round(12 * pointSize);
@@ -790,13 +790,92 @@ function drawRigOverlay(ctx, layers, imageMap, rigging, pose, mode, selectedLaye
             }
         }
     }
+
+    // ---- PSWポイント描画 ----
+    const PSW_STEP = Math.PI / 6; // 30度
+    for (const pswLayer of pswLayers) {
+        for (const pswInfo of (pswLayer.points || [])) {
+            const oX = pswInfo.x ?? 0;
+            const oY = pswInfo.y ?? 0;
+            const radius = pswInfo.radius ?? 80;
+            const angle  = pswInfo.angle  ?? 0;
+            const hX = oX + radius * Math.cos(angle);
+            const hY = oY + radius * Math.sin(angle);
+            const isSelected = selectedPswPointInfo?.pswLayerId === pswLayer.id
+                             && selectedPswPointInfo?.pointId === pswInfo.id;
+            const slots = pswInfo.slots || [{ degree: 0, pose: null }];
+            const n = slots.length;
+
+            // セットアップモード選択中: 可動範囲弧を表示
+            if (mode === 'setup' && isSelected && n > 1) {
+                ctx.save();
+                ctx.strokeStyle = "rgba(200,180,255,0.4)";
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 3]);
+                ctx.beginPath();
+                ctx.arc(oX, oY, radius, 0, PSW_STEP * (n - 1));
+                ctx.stroke();
+                ctx.setLineDash([]);
+                for (let i = 0; i <= n - 1; i++) {
+                    const a = PSW_STEP * i;
+                    ctx.strokeStyle = "rgba(200,160,255,0.5)";
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(oX + (radius - 8) * Math.cos(a), oY + (radius - 8) * Math.sin(a));
+                    ctx.lineTo(oX + (radius + 2) * Math.cos(a), oY + (radius + 2) * Math.sin(a));
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+
+            // 白い線（原点→ハンドル）
+            ctx.save();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(oX, oY); ctx.lineTo(hX, hY); ctx.stroke();
+            ctx.restore();
+
+            // 選択リング
+            if (isSelected) {
+                ctx.save();
+                ctx.strokeStyle = "rgba(255,230,0,0.9)";
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(oX, oY, Math.round(11 * pointSize), 0, Math.PI * 2); ctx.stroke();
+                ctx.restore();
+            }
+
+            // 白い原点
+            _drawRigPoint(ctx, oX, oY, Math.round(7 * pointSize), "#ffffff", "#aaaaaa");
+
+            // 紫のハンドル
+            _drawRigPoint(ctx, hX, hY, Math.round(7 * pointSize), "#cc88ff", "#fff");
+
+            // スロット番号をハンドル中に表示
+            if (n > 0) {
+                const range = PSW_STEP * n;
+                const normAngle = ((angle % range) + range) % range;
+                const activeIdx = Math.min(Math.floor(normAngle / PSW_STEP), n - 1);
+                ctx.save();
+                ctx.fillStyle = "#fff";
+                ctx.font = `bold ${Math.max(7, Math.round(9 * pointSize))}px sans-serif`;
+                ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillText(String(activeIdx), hX, hY);
+                ctx.restore();
+            }
+
+            // PSW名ラベル
+            if (pswInfo.name) {
+                _drawRigLabel(ctx, oX, oY, pswInfo.name, isSelected, pointSize);
+            }
+        }
+    }
 }
 
 // ================================================
 // リグポイントのヒットテスト（PSD座標）
 //   返り値: null | { layerId, type: 'r'|'mr'|'orange' }
 // ================================================
-function hitTestRig(wx, wy, layers, imageMap, rigging, pose, mode, zoom, layerParentMap = {}, customGroups = [], pointSize = 1.0, swLayers = []) {
+function hitTestRig(wx, wy, layers, imageMap, rigging, pose, mode, zoom, layerParentMap = {}, customGroups = [], pointSize = 1.0, swLayers = [], pswLayers = []) {
     const HIT_R = 14 / zoom * pointSize;
 
     function flatLayers(nodes, arr = []) {
@@ -884,6 +963,31 @@ function hitTestRig(wx, wy, layers, imageMap, rigging, pose, mode, zoom, layerPa
                 if (do_ < HIT_R && do_ < bestDist) {
                     bestDist = do_;
                     bestHit = { swLayerId: swLayer.id, swPointId: swInfo.id, type: 'sw_origin' };
+                }
+            }
+        }
+    }
+
+    // PSWポイントのヒットテスト（ハンドル＋セットアップ時は原点も）
+    for (const pswLayer of pswLayers) {
+        for (const pswInfo of (pswLayer.points || [])) {
+            const oX = pswInfo.x ?? 0;
+            const oY = pswInfo.y ?? 0;
+            const radius = pswInfo.radius ?? 80;
+            const angle  = pswInfo.angle  ?? 0;
+            const hX = oX + radius * Math.cos(angle);
+            const hY = oY + radius * Math.sin(angle);
+
+            const dh = Math.hypot(wx - hX, wy - hY);
+            if (dh < HIT_R && dh < bestDist) {
+                bestDist = dh;
+                bestHit = { pswLayerId: pswLayer.id, pswPointId: pswInfo.id, type: 'psw_handle' };
+            }
+            if (mode === 'setup') {
+                const do_ = Math.hypot(wx - oX, wy - oY);
+                if (do_ < HIT_R && do_ < bestDist) {
+                    bestDist = do_;
+                    bestHit = { pswLayerId: pswLayer.id, pswPointId: pswInfo.id, type: 'psw_origin' };
                 }
             }
         }
@@ -1028,17 +1132,21 @@ function drawNodeCanvas(node, { skipFrameLabel = false, targetCanvas = null } = 
     if (node._layerImages && node._psdW && node._psdH && node._psdLayers) {
         try { _config = JSON.parse(findWidget(node, "layer_config")?.value || "{}"); } catch (_) {}
         const _imgMap = getEffectiveImageMap(node, _config);
-        renderLayersToCtx(ctx, node._psdLayers, _imgMap, _config);
+        // PSWポーズを適用した有効configでレンダリング
+        const _effectivePoseNode = computePswEffectivePose(_config.pose || {}, _config.psw_layers || [], null, node._pswEnabled !== false);
+        const _renderConfigNode = Object.assign({}, _config, { pose: _effectivePoseNode });
+        renderLayersToCtx(ctx, node._psdLayers, _imgMap, _renderConfigNode);
 
         // リグオーバーレイ（ポージングモード）
-        if (_config.rigging || _config.sw_layers?.length) {
+        if (_config.rigging || _config.sw_layers?.length || _config.psw_layers?.length) {
             drawRigOverlay(
                 ctx, node._psdLayers, _imgMap,
-                _config.rigging || {}, _config.pose, 'pose',
+                _config.rigging || {}, _effectivePoseNode, 'pose',
                 node._rigSelectedLayerId ?? null, null,
                 node._showRigLabels ?? false, _config.renamed || {}, _config.layer_parent || {},
                 _config.custom_groups || [], node._rigPointSize ?? 1.0,
-                _config.sw_layers || [], node._selectedSwPointInfo ?? null
+                _config.sw_layers || [], node._selectedSwPointInfo ?? null,
+                _config.psw_layers || [], node._selectedPswPointInfo ?? null
             );
         }
     } else if (node._compositeImg && node._psdW && node._psdH) {
@@ -1407,6 +1515,13 @@ function _kfGetInterpolatedState(keyframes, frame) {
         sw_angles[id] = _kfLerpAngle(before.sw_angles?.[id] ?? 0, after.sw_angles?.[id] ?? 0, t);
     }
 
+    // PSW角度補間
+    const psw_angles = {};
+    const pswIds = new Set([...Object.keys(before.psw_angles || {}), ...Object.keys(after.psw_angles || {})]);
+    for (const id of pswIds) {
+        psw_angles[id] = _kfLerpAngle(before.psw_angles?.[id] ?? 0, after.psw_angles?.[id] ?? 0, t);
+    }
+
     // visibility はステップ（before を使用）
     const visibility = JSON.parse(JSON.stringify(before.visibility || {}));
 
@@ -1439,7 +1554,7 @@ function _kfGetInterpolatedState(keyframes, frame) {
         }
     }
 
-    return { pose, sw_angles, visibility, camera };
+    return { pose, sw_angles, psw_angles, visibility, camera };
 }
 
 // 指定フレームにシーク（layer_config を更新して再描画）
@@ -1467,6 +1582,14 @@ function seekToFrame(node, frame, { silent = false } = {}) {
                     for (const swl of (config.sw_layers || [])) {
                         for (const pt of (swl.points || [])) {
                             if (pt.id in state.sw_angles) pt.angle = state.sw_angles[pt.id];
+                        }
+                    }
+                }
+
+                if (state.psw_angles && Object.keys(state.psw_angles).length > 0) {
+                    for (const pswl of (config.psw_layers || [])) {
+                        for (const pt of (pswl.points || [])) {
+                            if (pt.id in state.psw_angles) pt.angle = state.psw_angles[pt.id];
                         }
                     }
                 }
@@ -1509,12 +1632,20 @@ function addKeyframeAtCurrentFrame(node) {
         }
     }
 
+    const psw_angles = {};
+    for (const pswl of (config.psw_layers || [])) {
+        for (const pt of (pswl.points || [])) {
+            psw_angles[pt.id] = pt.angle ?? 0;
+        }
+    }
+
     // 同フレームに既存 KF があればカメラデータを引き継ぐ
     const existingKf = (node._keyframes || []).find(k => k.frame === frame);
     const kf = {
         frame,
         pose:       JSON.parse(JSON.stringify(config.pose       || {})),
         sw_angles,
+        psw_angles,
         visibility: JSON.parse(JSON.stringify(config.visibility || {})),
     };
     if (existingKf?.camera) kf.camera = existingKf.camera;
@@ -1880,6 +2011,35 @@ async function saveKeyframeProject(node) {
 }
 
 // ================================================
+// PSWポーズ補間：PSWハンドル角度からアクティブスロットのポーズを返す
+// basePose と合成する（PSWが優先）
+// ================================================
+function computePswEffectivePose(basePose, pswLayers, editingPswPointId = null, enabled = true) {
+    if (!enabled) return Object.assign({}, basePose);
+    const PSW_STEP = Math.PI / 6;
+    const result = Object.assign({}, basePose);
+    for (const pswLayer of (pswLayers || [])) {
+        for (const pswInfo of (pswLayer.points || [])) {
+            if (pswInfo.id === editingPswPointId) continue; // 編集中はオーバーライドしない
+            const slots = pswInfo.slots || [{ degree: 0, pose: null }];
+            const n = slots.length;
+            if (n === 0) continue;
+            const angle = pswInfo.angle ?? 0;
+            const range = PSW_STEP * n;
+            const normAngle = ((angle % range) + range) % range;
+            const slotIdx = Math.min(Math.floor(normAngle / PSW_STEP), n - 1);
+            const slot = slots[slotIdx];
+            if (slot?.pose) {
+                for (const [layerId, p] of Object.entries(slot.pose)) {
+                    result[layerId] = Object.assign({}, p);
+                }
+            }
+        }
+    }
+    return result;
+}
+
+// ================================================
 // レイヤー状態管理
 // ================================================
 class LayerState {
@@ -1889,7 +2049,8 @@ class LayerState {
         this.customGroups = [];
         this.rigging = {};  // { layerId: { r:{x,y}, mr:{x,y}, mr_radius:0 } }
         this.pose    = {};  // { layerId: { angle:0, tx:0, ty:0 } }
-        this.swLayers = [];  // [{ id, name, points:[{ id, name, x, y, radius, angle, groups:[] }] }]
+        this.swLayers  = [];  // [{ id, name, points:[{ id, name, x, y, radius, angle, groups:[] }] }]
+        this.pswLayers = [];  // [{ id, name, points:[{ id, name, x, y, radius, angle, slots:[{ degree, pose }] }] }]
         this.cgOrder = [...layers].reverse().map(n => n.id);
         this.layerParent = {};  // { childId: parentId } レイヤー間の親子関係
         this.parentTabOrder = { roots: null, children: {} };  // ペアレントタブ表示順（cgOrderとは独立）
@@ -1918,7 +2079,8 @@ class LayerState {
             },
             rigging:   JSON.parse(JSON.stringify(this.rigging)),
             pose:      JSON.parse(JSON.stringify(this.pose)),
-            sw_layers: JSON.parse(JSON.stringify(this.swLayers)),
+            sw_layers:  JSON.parse(JSON.stringify(this.swLayers)),
+            psw_layers: JSON.parse(JSON.stringify(this.pswLayers)),
         };
     }
 
@@ -1969,6 +2131,9 @@ class LayerState {
                 });
             }
             s.swLayers = [swl];
+        }
+        if (config?.psw_layers) {
+            s.pswLayers = JSON.parse(JSON.stringify(config.psw_layers));
         }
         return s;
     }
@@ -2052,9 +2217,22 @@ class PSDModal {
             b.dataset.pointType = type;
             return b;
         };
-        this._btnR  = mkSetupBtn("R",  'r',  "#1a3a6a");
-        this._btnMR = mkSetupBtn("MR", 'mr', "#3a1a1a");
-        this._btnSW = mkSetupBtn("SW", 'sw', "#1a3a1a");
+        this._btnR   = mkSetupBtn("R",   'r',   "#1a3a6a");
+        this._btnMR  = mkSetupBtn("MR",  'mr',  "#3a1a1a");
+        this._btnSW  = mkSetupBtn("LSW", 'sw',  "#1a3a1a");
+        this._btnPSW = mkSetupBtn("PSW", 'psw', "#3a1a3a");
+        this._btnPSW.onclick = () => {
+            // PSWレイヤーが無ければ自動作成、あれば先頭を選択
+            if (this.state.pswLayers.length === 0) {
+                this._createPswLayer();
+            } else if (!this._selectedPswLayerId) {
+                this._selectedPswLayerId = this.state.pswLayers[0].id;
+                if (this._activeTab === 'psw') this._renderPswTab();
+            }
+            this._setupPointType = 'psw';
+            this._updateSetupBtns();
+            this._drawPreview();
+        };
         const delRigBtn = document.createElement("button");
         delRigBtn.className = "psd-btn";
         delRigBtn.textContent = t("deleteRigBtn");
@@ -2066,7 +2244,7 @@ class PSDModal {
         setupHint.style.cssText = "font-size:10px;color:#888;";
         setupHint.textContent = t("setupHint");
 
-        setupBar.append(this._btnR, this._btnMR, this._btnSW, delRigBtn, setupHint);
+        setupBar.append(this._btnR, this._btnMR, this._btnSW, this._btnPSW, delRigBtn, setupHint);
         this._setupBar = setupBar;
 
         // ---- ポーズ専用バー ----
@@ -2163,7 +2341,8 @@ class PSDModal {
         const tabLayerBtn  = mkTabBtn(t("tabLayer"));
         const tabParentBtn = mkTabBtn(t("tabParent"));
         const tabSwitchBtn = mkTabBtn(t("tabSwitch"));
-        tabBar.append(tabLayerBtn, tabParentBtn, tabSwitchBtn);
+        const tabPSWBtn    = mkTabBtn(t("tabPSwitch"));
+        tabBar.append(tabLayerBtn, tabParentBtn, tabSwitchBtn, tabPSWBtn);
 
         // レイヤータブ
         const layerTabContent = document.createElement("div");
@@ -2173,10 +2352,12 @@ class PSDModal {
         const layerGroupBar = document.createElement("div");
         layerGroupBar.className = "psd-group-bar";
         layerGroupBar.append(
-            this._mkBtn(t("createGroup"),   () => this._createGroup()),
+            this._mkBtn(t("createGroup"),    () => this._createGroup()),
             this._mkBtn(t("ungroup"),        () => this._ungroup()),
             this._mkBtn(t("addSwLayer"),     () => this._createSwLayer()),
             this._mkBtn(t("deleteSwLayer"),  () => this._deleteSwLayer()),
+            this._mkBtn(t("addPswLayer"),    () => this._createPswLayer()),
+            this._mkBtn(t("deletePswLayer"), () => this._deletePswLayer()),
         );
         layerTabContent.append(this._layerListEl, layerGroupBar);
 
@@ -2228,12 +2409,44 @@ class PSDModal {
         this._selectedSwPointInfo = null;
         this._selectedSwGroupIdx = -1;
 
+        // PSWタブ
+        const pswTabContent = document.createElement("div");
+        pswTabContent.style.cssText = "display:none;flex-direction:column;flex:1;overflow:hidden;";
+        this._pswListEl = document.createElement("div");
+        this._pswListEl.className = "psd-layer-list";
+        this._pswSlotListEl = document.createElement("div");
+        this._pswSlotListEl.style.cssText = "flex:1;overflow-y:auto;padding:4px 8px;font-size:11px;min-height:0;";
+        const pswBar = document.createElement("div");
+        pswBar.className = "psd-group-bar";
+        const mkPswBtn = (text, tipKey, fn) => {
+            const btn = document.createElement("button");
+            btn.className = "psd-btn";
+            btn.textContent = text;
+            btn.title = t(tipKey);
+            btn.onclick = fn;
+            return btn;
+        };
+        pswBar.append(
+            mkPswBtn("+Slot", "addPswSlotTooltip",   () => this._addPswSlot()),
+            mkPswBtn("−Slot", "deletePswSlotTooltip",() => this._removePswSlot()),
+            mkPswBtn("+MLP", "setPswPoseTooltip",   () => this._setMlpPose()),
+            mkPswBtn("+SLP", "setSlpPoseTooltip",   () => this._setSlpPose()),
+            mkPswBtn("−LP",  "clearPswPoseTooltip", () => this._clearPswPose()),
+        );
+        pswTabContent.append(this._pswListEl, this._pswSlotListEl, pswBar);
+        this._selectedPswLayerId  = null;
+        this._selectedPswPointInfo = null;
+        this._selectedPswSlotIdx  = 0;
+        this._pswEditingPointId   = null; // 編集中PSWポイントID（このポイントのPSWオーバーライドを無効化）
+        this._lastSlpLayerId      = null; // +SLP で最後に使ったレイヤーID（スロット間の再選択省略用）
+
         // タブ切り替え
         const updateTabStyle = () => {
             [
                 { btn: tabLayerBtn,  key: 'layer'  },
                 { btn: tabParentBtn, key: 'parent' },
                 { btn: tabSwitchBtn, key: 'switch' },
+                { btn: tabPSWBtn,    key: 'psw'    },
             ].forEach(({ btn, key }) => {
                 const active = this._activeTab === key;
                 btn.style.background = active ? "#313244" : "";
@@ -2242,13 +2455,15 @@ class PSDModal {
             layerTabContent.style.display  = this._activeTab === 'layer'  ? "flex" : "none";
             parentTabContent.style.display = this._activeTab === 'parent' ? "flex" : "none";
             switchTabContent.style.display = this._activeTab === 'switch' ? "flex" : "none";
+            pswTabContent.style.display    = this._activeTab === 'psw'    ? "flex" : "none";
         };
         tabLayerBtn.onclick  = () => { this._activeTab = 'layer';  updateTabStyle(); };
         tabParentBtn.onclick = () => { this._activeTab = 'parent'; updateTabStyle(); this._renderTree(); };
         tabSwitchBtn.onclick = () => { this._activeTab = 'switch'; updateTabStyle(); this._renderSwitchTab(); };
+        tabPSWBtn.onclick    = () => { this._activeTab = 'psw';    updateTabStyle(); this._renderPswTab(); };
         updateTabStyle();
 
-        rightPanel.append(tabBar, layerTabContent, parentTabContent, switchTabContent);
+        rightPanel.append(tabBar, layerTabContent, parentTabContent, switchTabContent, pswTabContent);
         body.append(previewPanel, rightPanel);
 
         const footer = document.createElement("div");
@@ -2389,9 +2604,11 @@ class PSDModal {
                     ["表示切替", "レイヤー行の 👁 アイコンをクリック"],
                     ["名前変更", "レイヤー名をダブルクリックして編集"],
                     ["順序変更", "レイヤー行をドラッグ&ドロップ"],
-                    ["カスタムグループ作成", "レイヤーを複数選択して「グループ作成」ボタン — スイッチタブでレイヤー単位に展開可能"],
+                    ["カスタムグループ作成", "レイヤーを複数選択して「グループ作成」ボタン — Lスイッチタブでレイヤー単位に展開可能"],
                     ["グループ解除", "カスタムグループを選択して「グループ解除」ボタン"],
-                    ["SWレイヤー追加/削除", "「SW追加」「SW削除」ボタン（スイッチタブで設定）"],
+                    ["LSWレイヤー追加/削除", "「SW追加」「SW削除」ボタン（Lスイッチタブで設定）"],
+                    ["PSWレイヤー追加/削除", "「PSW追加」「PSW削除」ボタン（Pスイッチタブで設定）"],
+                    ["PSWレイヤー名変更", "PSWレイヤー名をダブルクリックして編集（レイヤータブ・Pスイッチタブ共通）"],
                 ],
             },
             {
@@ -2403,10 +2620,10 @@ class PSDModal {
                 ],
             },
             {
-                title: "スイッチタブ",
+                title: "Lスイッチ（LSW）タブ",
                 rows: [
-                    ["SWレイヤー選択", "左列でSWレイヤーを選択すると右列にSWポイントが表示される"],
-                    ["SWポイント追加", "Setupモードで SW ボタンを選択してキャンバスをクリック"],
+                    ["LSWレイヤー選択", "左列でLSWレイヤーを選択すると右列にSWポイントが表示される"],
+                    ["LSWポイント追加", "Setupモードで LSW ボタンを押してキャンバスをクリック"],
                     ["エントリ追加", "+L: 個別レイヤーを1スロットとして追加 / +P: グループ/フォルダをメンバーごとに展開して追加（Piece） / +C: グループ/フォルダ全体を合成して1スロットとして追加（Composite）"],
                     ["エントリ削除", "エントリを選択して − ボタンで削除"],
                     ["バッジ", "[L] 個別レイヤー（1スロット） / [P] Pieceグループ（メンバー数スロット） / [C] Compositeグループ（常に1スロット）"],
@@ -2418,12 +2635,28 @@ class PSDModal {
                 ],
             },
             {
+                title: "Pスイッチ（PSW）タブ",
+                rows: [
+                    ["概要", "PSWポイントのハンドル角度に応じて、登録済みポーズ（R/MR状態）を自動的に適用するスイッチ"],
+                    ["PSWポイント追加", "Setupモードで PSW ボタンを押し（初回はレイヤー自動作成）、キャンバスをクリック"],
+                    ["スロット追加/削除", "+Slot ボタンで30°刻みのスロットを追加（最大12スロット）、−Slot で最後のスロットを削除"],
+                    ["0°ポーズ登録 (+MLP)", "0°スロット選択時のみ有効。Poseモードでポーズを決めて +MLP で全レイヤーをまとめて登録（マルチレイヤーポーズ）"],
+                    ["0°ポーズ登録 (+SLP)", "0°スロット選択時のみ有効。レイヤーツリーで対象レイヤーを選択し +SLP で1レイヤー分を登録（シングルレイヤーポーズ）"],
+                    ["他スロットのポーズ登録", "スロット行をクリックして移動 → ✏編集 でポーズをロード → ポーズ調整 → ✓確定 で保存"],
+                    ["ポーズクリア (−LP)", "スロットを選択して −LP ボタンで登録ポーズをクリア"],
+                    ["動作", "PSWハンドル角度が 0°〜30°→スロット0、30°〜60°→スロット1… のように切り替わる。可動域は（スロット数−1）×30°でロック"],
+                    ["PSW トグル（ノード）", "ノードの Capture ボタン左の PSW ボタンで ON/OFF を切り替え。青=ON（プリセットポーズ適用）、赤=OFF（PSW無効・R/MRで全レイヤー自由操作）"],
+                    ["複数PSW", "複数のPSWポイントを配置した場合、それぞれが独立してポーズを合成する"],
+                ],
+            },
+            {
                 title: "Setup モード",
                 rows: [
                     ["有効化", "ヘッダーの Setup ボタンをクリック（もう一度クリックで通常モードに戻る）"],
                     ["R ポイント（青）", "回転軸。選択レイヤー上でクリックして配置。Pose モードでは回転ドラッグで角度を変える"],
                     ["MR ポイント（赤）", "平行移動軸（可動範囲円あり）。Pose モードで orange ハンドルをドラッグして移動"],
-                    ["SW ポイント（緑）", "スイッチポイント。ハンドル（水色）を回転させてアクティブスロットを切り替える"],
+                    ["LSW ポイント（緑）", "レイヤースイッチポイント。ハンドル（水色）を回転させてアクティブスロットを切り替える"],
+                    ["PSW ポイント（白）", "ポーズスイッチポイント。ハンドル（紫）を回転させて登録済みポーズを切り替える。PSWボタンを押してキャンバスをクリックで配置"],
                     ["ポイント削除", "対象レイヤーを選択して「🗑 削除」ボタン"],
                 ],
             },
@@ -2433,9 +2666,10 @@ class PSDModal {
                     ["有効化", "ヘッダーの Pose ボタンをクリック"],
                     ["回転 (R)", "青いリグポイントをドラッグして回転"],
                     ["移動 (MR)", "orange ハンドルをドラッグして平行移動（可動範囲円内で制限）"],
-                    ["スイッチ切替", "水色の SW ハンドルを回転"],
+                    ["スイッチ切替 (LSW)", "水色の LSW ハンドルを回転"],
+                    ["ポーズ切替 (PSW)", "紫の PSW ハンドルを回転。各スロットに登録されたポーズが自動適用される"],
                     ["ラベル表示", "🏷 ラベル ボタンでポイント上のレイヤー名を表示/非表示"],
-                    ["ポーズ保存", "📷 ポーズ ボタン（右クリック: SW状態込みで保存）。サムネイルはラベル非表示で自動作成"],
+                    ["ポーズ保存", "📷 ポーズ ボタン（右クリック: LSW/PSWハンドル状態込みで保存）。サムネイルはラベル非表示で自動作成"],
                     ["ポーズリセット", "RP ボタンで全ポーズをリセット"],
                 ],
             },
@@ -2473,9 +2707,11 @@ class PSDModal {
                     ["切换可见性", "点击图层行的 👁 图标"],
                     ["重命名", "双击图层名称进行编辑"],
                     ["调整顺序", "拖放图层行"],
-                    ["创建自定义组", "多选图层后点击「创建组」按钮 — 可在切换选项卡中按图层展开"],
+                    ["创建自定义组", "多选图层后点击「创建组」按钮 — 可在L切换选项卡中按图层展开"],
                     ["解除组", "选中自定义组后点击「解除组」按钮"],
-                    ["SW图层", "使用「添加SW」/「删除SW」按钮（在切换选项卡中配置）"],
+                    ["LSW图层", "使用「添加SW」/「删除SW」按钮（在L切换选项卡中配置）"],
+                    ["PSW图层", "使用「添加PSW」/「删除PSW」按钮（在P切换选项卡中配置）"],
+                    ["PSW图层重命名", "双击PSW图层名称进行编辑（图层选项卡/P切换选项卡均可）"],
                 ],
             },
             {
@@ -2487,10 +2723,10 @@ class PSDModal {
                 ],
             },
             {
-                title: "切换选项卡",
+                title: "L切换（LSW）选项卡",
                 rows: [
-                    ["选择SW图层", "在左列选择SW图层，右列显示SW点"],
-                    ["添加SW点", "在Setup模式下选择SW后点击画布"],
+                    ["选择LSW图层", "在左列选择LSW图层，右列显示SW点"],
+                    ["添加LSW点", "在Setup模式下点击 LSW 按钮后点击画布"],
                     ["添加条目", "+L: 将单个图层添加为1个槽位 / +P: 将组/文件夹按图层逐一展开（Piece） / +C: 将组/文件夹整体合成为1个槽位（Composite）"],
                     ["删除条目", "选中条目后点击 − 删除"],
                     ["标记", "[L] 单个图层（1槽位） / [P] Piece组（成员数槽位） / [C] Composite组（始终1槽位）"],
@@ -2501,12 +2737,27 @@ class PSDModal {
                 ],
             },
             {
+                title: "P切换（PSW）选项卡",
+                rows: [
+                    ["概述", "根据PSW点手柄角度，自动切换已注册的姿势（R/MR状态）"],
+                    ["添加PSW点", "在Setup模式下点击 PSW 按钮（首次自动创建图层）后点击画布"],
+                    ["添加/删除插槽", "+Slot 按钮每次添加30°插槽（最多12个），−Slot 按钮删除最后一个插槽"],
+                    ["注册0°姿势 (+MLP)", "仅在选中0°插槽时有效。在Pose模式下摆好姿势，点击 +MLP 将所有图层姿势一并注册（多图层姿势）"],
+                    ["注册0°姿势 (+SLP)", "仅在选中0°插槽时有效。在图层树中选中目标图层，点击 +SLP 仅将该图层的姿势注册（单图层姿势）"],
+                    ["注册其他插槽姿势", "点击插槽行选中 → 点击 ✏编辑 加载姿势 → 调整姿势 → 点击 ✓确定 保存"],
+                    ["清除姿势 (−LP)", "选中插槽后点击 −LP 清除已注册的姿势"],
+                    ["动作", "PSW手柄角度 0°~30°→插槽0，30°~60°→插槽1…依次切换。可移动范围锁定为（插槽数−1）×30°"],
+                    ["PSW切换（节点）", "节点Capture按钮左侧的PSW按钮可切换ON/OFF。蓝色=ON（应用预设姿势），红色=OFF（禁用PSW，可用R/MR自由操作所有图层）"],
+                ],
+            },
+            {
                 title: "Setup 模式",
                 rows: [
                     ["启用", "点击标题栏的 Setup 按钮（再次点击退出）"],
                     ["R 点（蓝色）", "旋转轴，点击放置。Pose模式下拖动旋转"],
                     ["MR 点（红色）", "平移轴，Pose模式下拖动橙色手柄移动"],
-                    ["SW 点（绿色）", "切换点，旋转水色手柄切换活动插槽"],
+                    ["LSW 点（绿色）", "图层切换点，旋转水色手柄切换活动插槽"],
+                    ["PSW 点（白色）", "姿势切换点，旋转紫色手柄切换已注册的姿势。点击PSW按钮后在画布上点击放置"],
                     ["删除点", "选中图层后点击「🗑 删除」按钮"],
                 ],
             },
@@ -2516,9 +2767,10 @@ class PSDModal {
                     ["启用", "点击标题栏的 Pose 按钮"],
                     ["旋转 (R)", "拖动蓝色绑定点"],
                     ["平移 (MR)", "拖动橙色手柄（限于范围圆内）"],
-                    ["切换", "旋转水色 SW 手柄"],
+                    ["切换 (LSW)", "旋转水色 LSW 手柄"],
+                    ["姿势切换 (PSW)", "旋转紫色 PSW 手柄，自动应用各插槽注册的姿势"],
                     ["标签显示", "点击 🏷 标签 按钮切换点位标签显示"],
-                    ["保存姿势", "点击 📷 姿势 按钮（右键: 含切换状态保存）。缩略图自动隐藏标签后生成"],
+                    ["保存姿势", "点击 📷 姿势 按钮（右键: 含LSW/PSW手柄状态保存）。缩略图自动隐藏标签后生成"],
                     ["重置姿势", "点击 RP 重置所有姿势"],
                 ],
             },
@@ -2556,9 +2808,11 @@ class PSDModal {
                     ["Toggle Visibility", "Click the 👁 icon on a layer row"],
                     ["Rename", "Double-click the layer name"],
                     ["Reorder", "Drag & drop layer rows"],
-                    ["Create Custom Group", "Select multiple layers, then click 'Group' — expandable per-layer in the Switch tab"],
+                    ["Create Custom Group", "Select multiple layers, then click 'Group' — expandable per-layer in the LSwitch tab"],
                     ["Ungroup", "Select a custom group, then click 'Ungroup'"],
-                    ["SW Layer", "Use 'Add SW' / 'Del SW' buttons (configure in Switch tab)"],
+                    ["LSW Layer", "Use 'Add SW' / 'Del SW' buttons (configure in LSwitch tab)"],
+                    ["PSW Layer", "Use 'Add PSW' / 'Del PSW' buttons (configure in PSwitch tab)"],
+                    ["Rename PSW Layer", "Double-click a PSW layer name to edit it (works in both Layer tab and PSwitch tab)"],
                 ],
             },
             {
@@ -2570,10 +2824,10 @@ class PSDModal {
                 ],
             },
             {
-                title: "Switch Tab",
+                title: "LSwitch (LSW) Tab",
                 rows: [
-                    ["Select SW Layer", "Pick a SW layer in the left column to see its SW points"],
-                    ["Add SW Point", "In Setup mode, select SW then click the canvas"],
+                    ["Select LSW Layer", "Pick an LSW layer in the left column to see its SW points"],
+                    ["Add LSW Point", "In Setup mode, click the LSW button then click the canvas"],
                     ["Add Entry", "+L: add individual layer as 1 slot / +P: add group/folder expanded per-layer (Piece) / +C: add group/folder composited as 1 slot (Composite)"],
                     ["Remove Entry", "Select an entry and click − to remove"],
                     ["Badges", "[L] individual layer (1 slot) / [P] Piece group (N slots) / [C] Composite group (always 1 slot)"],
@@ -2585,12 +2839,28 @@ class PSDModal {
                 ],
             },
             {
+                title: "PSwitch (PSW) Tab",
+                rows: [
+                    ["Overview", "PSW automatically applies a registered pose (R/MR state) based on the PSW handle angle"],
+                    ["Add PSW Point", "In Setup mode, click the PSW button (auto-creates a layer on first use) then click the canvas"],
+                    ["Add/Remove Slots", "+Slot adds a 30° slot (up to 12 max); −Slot removes the last slot"],
+                    ["Register Pose at 0° (+MLP)", "Only at slot 0. In Pose mode, set the desired pose then click +MLP to register all layer poses (Multi-Layer Pose)"],
+                    ["Register Pose at 0° (+SLP)", "Only at slot 0. Select a layer in the layer tree then click +SLP to register that layer's pose (Single-Layer Pose)"],
+                    ["Register Pose at other slots", "Click a slot row → click ✏Edit to load the pose → adjust → click ✓Confirm to save"],
+                    ["Clear Pose (−LP)", "Select a slot and click −LP to clear its registered pose"],
+                    ["Behavior", "PSW handle 0°–30°→slot 0, 30°–60°→slot 1, and so on. Movement range is locked to (slot count − 1) × 30°"],
+                    ["PSW Toggle (node)", "The PSW button left of Capture on the node toggles ON/OFF. Blue=ON (preset poses active), Red=OFF (PSW disabled — all layers freely controlled by R/MR)"],
+                    ["Multiple PSW", "Multiple PSW points can coexist and each applies its pose independently"],
+                ],
+            },
+            {
                 title: "Setup Mode",
                 rows: [
                     ["Enable", "Click the Setup button in the header (click again to exit)"],
                     ["R Point (blue)", "Rotation pivot. Click to place. In Pose mode, drag to rotate"],
                     ["MR Point (red)", "Translation axis with movement range. In Pose mode, drag orange handle"],
-                    ["SW Point (green)", "Switch point. Rotate the cyan handle to change active slot"],
+                    ["LSW Point (green)", "Layer switch point. Rotate the cyan handle to change active slot"],
+                    ["PSW Point (white)", "Pose switch point. Rotate the purple handle to apply registered poses. Click PSW button then click canvas to place"],
                     ["Delete Rig", "Select the target layer, then click '🗑 Delete'"],
                 ],
             },
@@ -2600,9 +2870,10 @@ class PSDModal {
                     ["Enable", "Click the Pose button in the header"],
                     ["Rotate (R)", "Drag the blue rig point"],
                     ["Translate (MR)", "Drag the orange handle (constrained to range circle)"],
-                    ["Switch", "Rotate the cyan SW handle"],
+                    ["Layer Switch (LSW)", "Rotate the cyan LSW handle"],
+                    ["Pose Switch (PSW)", "Rotate the purple PSW handle — registered poses are applied automatically"],
                     ["Labels", "Toggle layer name labels with 🏷 Labels"],
-                    ["Save Pose", "Click 📷 Pose (right-click to include switch states). Thumbnail is captured with labels hidden automatically"],
+                    ["Save Pose", "Click 📷 Pose (right-click to include LSW/PSW handle states). Thumbnail is captured with labels hidden automatically"],
                     ["Reset Pose", "Click RP to zero all poses"],
                 ],
             },
@@ -2760,7 +3031,13 @@ class PSDModal {
         ctx.translate(-W / 2 + cam.x, -H / 2 + cam.y);
 
         const imageMap = this._getEffectiveImageMap();
-        renderLayersToCtx(ctx, this.layerTree, imageMap, config);
+        // PSWポーズオーバーライドを適用（編集中ポイントは除外）
+        const effectivePose = computePswEffectivePose(
+            config.pose || {}, config.psw_layers || [], this._pswEditingPointId,
+            this.node._pswEnabled !== false
+        );
+        const renderConfig = Object.assign({}, config, { pose: effectivePose });
+        renderLayersToCtx(ctx, this.layerTree, imageMap, renderConfig);
 
         // PSDキャンバス境界線（ctx変換内で描画）
         if (node._psdW && node._psdH) {
@@ -2773,16 +3050,17 @@ class PSDModal {
         }
 
         // リグオーバーレイ（カメラ変換内で描画）
-        if (this._rigMode !== 'normal' && (config.rigging || config.sw_layers?.length)) {
+        if (this._rigMode !== 'normal' && (config.rigging || config.sw_layers?.length || config.psw_layers?.length)) {
             const selId      = this._getSelectedLayerId();
             const showLabels = this._rigMode === 'setup' || (this._rigMode === 'pose' && this._showRigLabels);
             drawRigOverlay(
                 ctx, this.layerTree, imageMap,
-                config.rigging || {}, config.pose,
+                config.rigging || {}, effectivePose,
                 this._rigMode, selId, this._setupPointType,
                 showLabels, config.renamed || {}, config.layer_parent || {},
                 this.state.customGroups, this._rigPointSize ?? 1.0,
-                config.sw_layers || [], this._selectedSwPointInfo ?? null
+                config.sw_layers || [], this._selectedSwPointInfo ?? null,
+                config.psw_layers || [], this._selectedPswPointInfo ?? null
             );
         }
 
@@ -2841,9 +3119,10 @@ class PSDModal {
     }
 
     _updateSetupBtns() {
-        this._btnR.style.outline  = (this._setupPointType === 'r')  ? "2px solid #4499ff" : "none";
-        this._btnMR.style.outline = (this._setupPointType === 'mr') ? "2px solid #ff3333" : "none";
-        this._btnSW.style.outline = (this._setupPointType === 'sw') ? "2px solid #44cc44" : "none";
+        this._btnR.style.outline   = (this._setupPointType === 'r')   ? "2px solid #4499ff" : "none";
+        this._btnMR.style.outline  = (this._setupPointType === 'mr')  ? "2px solid #ff3333" : "none";
+        this._btnSW.style.outline  = (this._setupPointType === 'sw')  ? "2px solid #44cc44" : "none";
+        this._btnPSW.style.outline = (this._setupPointType === 'psw') ? "2px solid #cc88ff" : "none";
     }
 
     _deleteSelectedRig() {
@@ -2893,7 +3172,7 @@ class PSDModal {
         for (const swLayer of this.state.swLayers) {
             // SWレイヤーヘッダー
             const layerRow = document.createElement("div");
-            layerRow.style.cssText = "padding:3px 8px;font-size:11px;color:#a78bfa;background:#1a1a2e;border-left:3px solid #7c3aed;display:flex;align-items:center;gap:4px;";
+            layerRow.style.cssText = "padding:3px 8px;font-size:11px;color:#55aaff;background:#0a1020;border-left:3px solid #2266cc;display:flex;align-items:center;gap:4px;";
             layerRow.textContent = `${t("swPrefix")} ${swLayer.name}`;
             this._switchListEl.appendChild(layerRow);
 
@@ -3221,6 +3500,40 @@ class PSDModal {
                     } else {
                         isPanning = true; canvas.style.cursor = "grabbing"; e.preventDefault();
                     }
+                } else if (this._setupPointType === 'psw') {
+                    // PSWモード: PSWポイントへのヒットテスト（ドラッグ）or 新規配置
+                    const hit = hitTestRig(wx, wy, this.layerTree, imageMap,
+                                           this.state.rigging, this.state.pose, 'setup', this._previewCam.zoom,
+                                           this.state.layerParent, this.state.customGroups, this._rigPointSize ?? 1.0,
+                                           this.state.swLayers, this.state.pswLayers);
+                    if (hit && (hit.type === 'psw_handle' || hit.type === 'psw_origin')) {
+                        this._selectedPswPointInfo = { pswLayerId: hit.pswLayerId, pointId: hit.pswPointId };
+                        dragInfo = { mode: 'setup_drag', hit };
+                        canvas.style.cursor = "crosshair";
+                        e.preventDefault(); e.stopPropagation();
+                    } else if (this._selectedPswPointInfo) {
+                        const selInfo = this._selectedPswPointInfo;
+                        const selPswL = this.state.pswLayers.find(l => l.id === selInfo.pswLayerId);
+                        const selPt   = selPswL?.points?.find(p => p.id === selInfo.pointId);
+                        const bonusR  = 28 / (this._previewCam.zoom ?? 1) * (this._rigPointSize ?? 1.0);
+                        if (selPt && Math.hypot(wx - (selPt.x ?? 0), wy - (selPt.y ?? 0)) < bonusR) {
+                            dragInfo = { mode: 'setup_drag', hit: { pswLayerId: selInfo.pswLayerId, pswPointId: selInfo.pointId, type: 'psw_origin' } };
+                            canvas.style.cursor = "crosshair";
+                            e.preventDefault(); e.stopPropagation();
+                        } else if (this._selectedPswLayerId) {
+                            this._placePswPoint(wx, wy);
+                            this._drawPreview();
+                            e.preventDefault(); e.stopPropagation();
+                        } else {
+                            isPanning = true; canvas.style.cursor = "grabbing"; e.preventDefault();
+                        }
+                    } else if (this._selectedPswLayerId) {
+                        this._placePswPoint(wx, wy);
+                        this._drawPreview();
+                        e.preventDefault(); e.stopPropagation();
+                    } else {
+                        isPanning = true; canvas.style.cursor = "grabbing"; e.preventDefault();
+                    }
                 } else {
                     const selId = this._getSelectedLayerId();
                     if (!selId) { isPanning = true; canvas.style.cursor = "grabbing"; e.preventDefault(); return; }
@@ -3243,7 +3556,8 @@ class PSDModal {
                 const imageMap = this._getEffectiveImageMap();
                 const hit = hitTestRig(wx, wy, this.layerTree, imageMap,
                                        this.state.rigging, this.state.pose, 'pose', this._previewCam.zoom,
-                                       this.state.layerParent, this.state.customGroups, this._rigPointSize ?? 1.0, this.state.swLayers);
+                                       this.state.layerParent, this.state.customGroups, this._rigPointSize ?? 1.0,
+                                       this.state.swLayers, this.state.pswLayers);
                 if (hit && (e.altKey || e.ctrlKey) && (hit.type === 'r' || hit.type === 'mr')) {
                     if (!this.state.pose[hit.layerId]) this.state.pose[hit.layerId] = { angle: 0, tx: 0, ty: 0 };
                     const p = this.state.pose[hit.layerId];
@@ -3260,6 +3574,18 @@ class PSDModal {
                         dragInfo = { mode: 'sw_pose_drag', hit,
                                      pivotX: swInfo.x ?? 0,
                                      pivotY: swInfo.y ?? 0 };
+                        canvas.style.cursor = "crosshair";
+                        e.preventDefault(); e.stopPropagation();
+                    } else { isPanning = true; canvas.style.cursor = "grabbing"; e.preventDefault(); e.stopPropagation(); }
+                } else if (hit && hit.type === 'psw_handle') {
+                    // PSWハンドル: 角度を変えてポーズ切り替え
+                    const pswLayer = this.state.pswLayers.find(l => l.id === hit.pswLayerId);
+                    const pswInfo = pswLayer?.points?.find(p => p.id === hit.pswPointId);
+                    if (pswInfo) {
+                        this._selectedPswPointInfo = { pswLayerId: hit.pswLayerId, pointId: hit.pswPointId };
+                        dragInfo = { mode: 'psw_pose_drag', hit,
+                                     pivotX: pswInfo.x ?? 0,
+                                     pivotY: pswInfo.y ?? 0 };
                         canvas.style.cursor = "crosshair";
                         e.preventDefault(); e.stopPropagation();
                     } else { isPanning = true; canvas.style.cursor = "grabbing"; e.preventDefault(); e.stopPropagation(); }
@@ -3327,6 +3653,21 @@ class PSDModal {
                         } else {
                             sw.x = Math.round(wx);
                             sw.y = Math.round(wy);
+                        }
+                    }
+                } else if (hit.type === 'psw_handle' || hit.type === 'psw_origin') {
+                    // PSWポイントのドラッグ
+                    const pswLayer = this.state.pswLayers.find(l => l.id === hit.pswLayerId);
+                    const psw = pswLayer?.points?.find(p => p.id === hit.pswPointId);
+                    if (psw) {
+                        if (hit.type === 'psw_handle') {
+                            const oX = psw.x ?? 0;
+                            const oY = psw.y ?? 0;
+                            psw.radius = Math.max(20, Math.round(Math.hypot(wx - oX, wy - oY)));
+                            psw.angle  = Math.atan2(wy - oY, wx - oX);
+                        } else {
+                            psw.x = Math.round(wx);
+                            psw.y = Math.round(wy);
                         }
                     }
                 } else {
@@ -3397,6 +3738,17 @@ class PSDModal {
                 const swInfo = swLayer?.points?.find(p => p.id === hit.swPointId);
                 if (swInfo) {
                     swInfo.angle = Math.atan2(wy - pivotY, wx - pivotX);
+                    this._drawPreview();
+                }
+            } else if (dragInfo.mode === 'psw_pose_drag') {
+                const { hit, pivotX, pivotY } = dragInfo;
+                const pswLayer = this.state.pswLayers.find(l => l.id === hit.pswLayerId);
+                const pswInfo = pswLayer?.points?.find(p => p.id === hit.pswPointId);
+                if (pswInfo) {
+                    const _raw  = Math.atan2(wy - pivotY, wx - pivotX);
+                    const _norm = ((_raw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+                    pswInfo.angle = Math.min(_norm, (Math.PI / 6) * Math.max((pswInfo.slots?.length || 1) - 1, 0));
+                    if (this._activeTab === 'psw') this._renderPswTab();
                     this._drawPreview();
                 }
             }
@@ -3472,6 +3824,10 @@ class PSDModal {
         // SWレイヤーを先頭に表示
         for (const swLayer of this.state.swLayers) {
             this._layerListEl.appendChild(this._mkSwLayerEl(swLayer));
+        }
+        // PSWレイヤーを表示
+        for (const pswLayer of this.state.pswLayers) {
+            this._layerListEl.appendChild(this._mkPswLayerEl(pswLayer));
         }
 
         const cgMap = {};
@@ -3794,12 +4150,13 @@ class PSDModal {
 
         const row = document.createElement("div");
         row.className = "psd-custom-group" + (isSel ? " selected" : "");
-        row.style.cssText = `padding-left:12px;background:${isSel ? "#2a1a3a" : "#1a1a2e"};border-left:3px solid #7c3aed;cursor:pointer;`;
+        row.style.cssText = `padding-left:12px;background:${isSel ? "#0d1a2e" : "#0a1020"};border-left:3px solid #2266cc;cursor:pointer;`;
 
         let clickTimer = null;
         const doSelect = () => {
             const nowSel = this._selectedSwLayerId === swLayer.id;
             this.selectedIds.clear(); this._selectedCgId = null;
+            this._selectedPswLayerId = null;
             this._selectedSwLayerId = nowSel ? null : swLayer.id;
             this._renderTree();
             if (this._activeTab === 'switch') this._renderSwitchTab();
@@ -3819,14 +4176,14 @@ class PSDModal {
 
         const nameEl = document.createElement("span"); nameEl.className = "cg-name";
         nameEl.textContent = `${t("swPrefix")} ${swLayer.name}`;
-        nameEl.style.color = "#a78bfa";
+        nameEl.style.color = "#55aaff";
         nameEl.title = t("dblClickToRename");
         nameEl.addEventListener("dblclick", e => {
             e.stopPropagation();
             clearTimeout(clickTimer); clickTimer = null;
             const input = document.createElement("input");
             input.value = swLayer.name;
-            input.style.cssText = "width:120px;background:#313244;border:1px solid #7c3aed;border-radius:3px;color:#a78bfa;padding:1px 6px;font-size:12px;outline:none;";
+            input.style.cssText = "width:120px;background:#313244;border:1px solid #2266cc;border-radius:3px;color:#55aaff;padding:1px 6px;font-size:12px;outline:none;";
             nameEl.replaceWith(input); input.focus(); input.select();
             const commit = () => {
                 if (!input.isConnected) return;
@@ -3863,6 +4220,421 @@ class PSDModal {
         this._renderTree();
         if (this._activeTab === 'switch') this._renderSwitchTab();
         this._drawPreview();
+    }
+
+    // ---- PSW（ポーズスイッチ）関連メソッド ----
+
+    _nextPswPointName() {
+        let idx = 1;
+        const used = new Set();
+        for (const l of this.state.pswLayers) for (const p of l.points) used.add(p.name);
+        while (used.has(`PSW${idx}`)) idx++;
+        return `PSW${idx}`;
+    }
+
+    _placePswPoint(wx, wy) {
+        const pswLayer = this.state.pswLayers.find(l => l.id === this._selectedPswLayerId);
+        if (!pswLayer) return;
+        const pt = {
+            id: `pswp_${Math.random().toString(36).slice(2)}`,
+            name: this._nextPswPointName(),
+            x: Math.round(wx),
+            y: Math.round(wy),
+            radius: 80,
+            angle: 0,
+            slots: [{ degree: 0, pose: null }],
+        };
+        pswLayer.points.push(pt);
+        this._selectedPswPointInfo = { pswLayerId: pswLayer.id, pointId: pt.id };
+        this._selectedPswSlotIdx  = 0;
+        this._pswEditingPointId   = null;
+        this._setupPointType = null;
+        this._updateSetupBtns();
+        if (this._activeTab === 'psw') this._renderPswTab();
+        this._renderLayerTab();
+        this._drawPreview();
+    }
+
+    _createPswLayer() {
+        let idx = 1;
+        const used = new Set(this.state.pswLayers.map(l => l.name));
+        while (used.has(`PSW${idx}`)) idx++;
+        const pswLayer = { id: `pswl_${Math.random().toString(36).slice(2)}`, name: `PSW${idx}`, points: [] };
+        this.state.pswLayers.push(pswLayer);
+        this._selectedPswLayerId  = pswLayer.id;
+        if (this._activeTab === 'psw') this._renderPswTab();
+        this._drawPreview();
+    }
+
+    _deletePswLayer() {
+        const id = this._selectedPswLayerId;
+        if (!id) return;
+        this.state.pswLayers = this.state.pswLayers.filter(l => l.id !== id);
+        this._selectedPswLayerId   = null;
+        this._selectedPswPointInfo = null;
+        this._pswEditingPointId    = null;
+        if (this._activeTab === 'psw') this._renderPswTab();
+        this._drawPreview();
+    }
+
+    _addPswSlot() {
+        const info = this._selectedPswPointInfo;
+        if (!info) return;
+        const pswLayer = this.state.pswLayers.find(l => l.id === info.pswLayerId);
+        const pt = pswLayer?.points?.find(p => p.id === info.pointId);
+        if (!pt) return;
+        if (pt.slots.length >= 12) { alert(t("maxPswSlotsReached")); return; }
+        const nextDeg = pt.slots.length * 30;
+        pt.slots.push({ degree: nextDeg, pose: null });
+        this._renderPswTab();
+        this._drawPreview();
+    }
+
+    _removePswSlot() {
+        const info = this._selectedPswPointInfo;
+        if (!info) return;
+        const pswLayer = this.state.pswLayers.find(l => l.id === info.pswLayerId);
+        const pt = pswLayer?.points?.find(p => p.id === info.pointId);
+        if (!pt || pt.slots.length <= 1) return;
+        pt.slots.pop();
+        this._selectedPswSlotIdx = Math.min(this._selectedPswSlotIdx, pt.slots.length - 1);
+        this._renderPswTab();
+        this._drawPreview();
+    }
+
+    _setMlpPose() {
+        const info = this._selectedPswPointInfo;
+        if (!info) return;
+        const pswLayer = this.state.pswLayers.find(l => l.id === info.pswLayerId);
+        const pt = pswLayer?.points?.find(p => p.id === info.pointId);
+        if (!pt) return;
+        const slotIdx = this._selectedPswSlotIdx;
+        if (slotIdx < 0 || slotIdx >= pt.slots.length) return;
+        if (slotIdx !== 0) return; // 0°スロット専用
+        pt.slots[slotIdx].pose = JSON.parse(JSON.stringify(this.state.pose));
+        this._pswEditingPointId = null;
+        this._renderPswTab();
+        this._drawPreview();
+    }
+
+    _setSlpPose() {
+        const info = this._selectedPswPointInfo;
+        if (!info) return;
+        const pswLayer = this.state.pswLayers.find(l => l.id === info.pswLayerId);
+        const pt = pswLayer?.points?.find(p => p.id === info.pointId);
+        if (!pt) return;
+        const slotIdx = this._selectedPswSlotIdx;
+        if (slotIdx < 0 || slotIdx >= pt.slots.length) return;
+        if (slotIdx !== 0) return; // 0°スロット専用
+
+        // レイヤー選択があれば記憶。なければ直前のSLPレイヤー→0°スロットの順にフォールバック
+        const selId = [...this.selectedIds][0];
+        if (selId) this._lastSlpLayerId = selId;
+        if (!this._lastSlpLayerId) {
+            const s0pose = pt.slots[0]?.pose;
+            if (s0pose) {
+                const ids = Object.keys(s0pose);
+                if (ids.length === 1) this._lastSlpLayerId = ids[0];
+            }
+        }
+        const layerId = this._lastSlpLayerId;
+        if (!layerId) { alert(t("noLayerSelectedForSlp")); return; }
+
+        const existing = pt.slots[slotIdx].pose ? JSON.parse(JSON.stringify(pt.slots[slotIdx].pose)) : {};
+        existing[layerId] = JSON.parse(JSON.stringify(this.state.pose[layerId] ?? { angle: 0, tx: 0, ty: 0 }));
+        pt.slots[slotIdx].pose = existing;
+        this._pswEditingPointId = null;
+        this._renderPswTab();
+        this._drawPreview();
+    }
+
+    _clearPswPose() {
+        const info = this._selectedPswPointInfo;
+        if (!info) return;
+        const pswLayer = this.state.pswLayers.find(l => l.id === info.pswLayerId);
+        const pt = pswLayer?.points?.find(p => p.id === info.pointId);
+        if (!pt) return;
+        const slotIdx = this._selectedPswSlotIdx;
+        if (slotIdx < 0 || slotIdx >= pt.slots.length) return;
+        pt.slots[slotIdx].pose = null;
+        this._renderPswTab();
+        this._drawPreview();
+    }
+
+    _renderPswTab() {
+        if (!this._pswListEl || !this._pswSlotListEl) return;
+        this._pswListEl.innerHTML = "";
+
+        for (const pswLayer of this.state.pswLayers) {
+            // PSWレイヤーヘッダー
+            const layerRow = document.createElement("div");
+            layerRow.style.cssText = "padding:3px 8px;font-size:11px;color:#ff7766;background:#1e0a0a;border-left:3px solid #cc3344;display:flex;align-items:center;gap:4px;cursor:pointer;";
+            const isLayerSel = this._selectedPswLayerId === pswLayer.id;
+            if (isLayerSel) layerRow.style.background = "#2a1a3a";
+
+            const layerNameEl = document.createElement("span");
+            layerNameEl.textContent = `[PSW] ${pswLayer.name}`;
+            layerNameEl.style.flex = "1";
+            layerNameEl.title = t("dblClickToRename");
+
+            let layerClickTimer = null;
+            layerRow.addEventListener("click", () => {
+                if (layerClickTimer) return;
+                layerClickTimer = setTimeout(() => {
+                    layerClickTimer = null;
+                    this._selectedPswLayerId = isLayerSel ? null : pswLayer.id;
+                    this._renderPswTab();
+                }, 260);
+            });
+            layerNameEl.addEventListener("dblclick", e => {
+                e.stopPropagation();
+                clearTimeout(layerClickTimer); layerClickTimer = null;
+                const input = document.createElement("input");
+                input.value = pswLayer.name;
+                input.style.cssText = "flex:1;background:#313244;border:1px solid #cc3344;border-radius:3px;color:#cdd6f4;padding:1px 6px;font-size:11px;outline:none;";
+                layerNameEl.replaceWith(input); input.focus(); input.select();
+                const commit = () => {
+                    if (!input.isConnected) return;
+                    const v = input.value.trim(); if (v) pswLayer.name = v;
+                    layerNameEl.textContent = `[PSW] ${pswLayer.name}`;
+                    input.replaceWith(layerNameEl);
+                    this._renderLayerTab();
+                };
+                input.addEventListener("blur", commit);
+                input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); commit(); } if (ev.key === "Escape") input.replaceWith(layerNameEl); });
+            });
+            layerRow.appendChild(layerNameEl);
+            this._pswListEl.appendChild(layerRow);
+
+            for (const pt of pswLayer.points) {
+                const isPtSel = this._selectedPswPointInfo?.pswLayerId === pswLayer.id
+                             && this._selectedPswPointInfo?.pointId === pt.id;
+                const row = document.createElement("div");
+                row.className = "psd-layer-item" + (isPtSel ? " selected" : "");
+                row.style.cssText = "padding:3px 10px 3px 20px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:4px;";
+
+                const nameEl = document.createElement("span");
+                nameEl.className = "layer-name";
+                nameEl.textContent = pt.name;
+                nameEl.title = t("clickSelectDblRename");
+                let clickTimer = null;
+                nameEl.addEventListener("click", e => {
+                    e.stopPropagation();
+                    if (clickTimer) return;
+                    clickTimer = setTimeout(() => {
+                        clickTimer = null;
+                        this._selectedPswPointInfo = isPtSel ? null : { pswLayerId: pswLayer.id, pointId: pt.id };
+                        if (!isPtSel) { this._selectedPswSlotIdx = 0; this._pswEditingPointId = null; }
+                        this._renderPswTab();
+                        this._drawPreview();
+                    }, 250);
+                });
+                nameEl.addEventListener("dblclick", e => {
+                    e.stopPropagation();
+                    clearTimeout(clickTimer); clickTimer = null;
+                    this._selectedPswPointInfo = { pswLayerId: pswLayer.id, pointId: pt.id };
+                    const input = document.createElement("input");
+                    input.value = pt.name;
+                    input.style.cssText = "width:90px;background:#313244;border:1px solid #cc88ff;border-radius:3px;color:#cdd6f4;padding:1px 6px;font-size:12px;outline:none;";
+                    nameEl.replaceWith(input); input.focus(); input.select();
+                    const commit = () => {
+                        if (!input.isConnected) return;
+                        const v = input.value.trim(); if (v) pt.name = v;
+                        nameEl.textContent = pt.name; input.replaceWith(nameEl); this._drawPreview();
+                    };
+                    input.addEventListener("blur", commit);
+                    input.addEventListener("keydown", ev => { if (ev.key === "Enter") commit(); if (ev.key === "Escape") input.replaceWith(nameEl); });
+                });
+
+                const delBtn = document.createElement("button");
+                delBtn.className = "psd-btn";
+                delBtn.textContent = "✕";
+                delBtn.style.cssText = "padding:1px 5px;font-size:10px;margin-left:auto;flex-shrink:0;";
+                delBtn.title = t("deletePswPointTooltip");
+                delBtn.onclick = e => {
+                    e.stopPropagation();
+                    pswLayer.points = pswLayer.points.filter(p => p.id !== pt.id);
+                    if (isPtSel) { this._selectedPswPointInfo = null; this._pswEditingPointId = null; }
+                    this._renderPswTab();
+                    this._drawPreview();
+                };
+
+                row.append(nameEl, delBtn);
+                row.addEventListener("click", e => {
+                    if (e.target === nameEl) return;
+                    this._selectedPswPointInfo = isPtSel ? null : { pswLayerId: pswLayer.id, pointId: pt.id };
+                    if (!isPtSel) { this._selectedPswSlotIdx = 0; this._pswEditingPointId = null; }
+                    this._renderPswTab();
+                    this._drawPreview();
+                });
+                this._pswListEl.appendChild(row);
+            }
+        }
+
+        // スロットリスト（選択中PSWポイントのスロット表示）
+        this._pswSlotListEl.innerHTML = "";
+        const selInfo = this._selectedPswPointInfo;
+        if (selInfo) {
+            const pswLayer = this.state.pswLayers.find(l => l.id === selInfo.pswLayerId);
+            const pt = pswLayer?.points?.find(p => p.id === selInfo.pointId);
+            if (pt) {
+                const PSW_STEP = Math.PI / 6;
+                const n = pt.slots.length;
+                const range = PSW_STEP * n;
+                const normAngle = ((pt.angle % range) + range) % range;
+                const activeSlotIdx = Math.min(Math.floor(normAngle / PSW_STEP), n - 1);
+
+                const hdr = document.createElement("div");
+                hdr.style.cssText = "font-size:10px;color:#888;padding:4px 0 2px;";
+                hdr.textContent = `${pt.name} — スロット (ハンドル: ${activeSlotIdx}番アクティブ)`;
+                this._pswSlotListEl.appendChild(hdr);
+
+                for (let i = 0; i < pt.slots.length; i++) {
+                    const slot = pt.slots[i];
+                    const isSlotSel  = this._selectedPswSlotIdx === i;
+                    const isActive   = activeSlotIdx === i;
+                    const hasPose    = !!slot.pose;
+                    const isEditing  = isSlotSel && this._pswEditingPointId === pt.id;
+
+                    const slotRow = document.createElement("div");
+                    slotRow.style.cssText = `
+                        padding:3px 8px;font-size:11px;cursor:pointer;
+                        display:flex;align-items:center;gap:6px;
+                        background:${isSlotSel ? "#2a0d10" : isActive ? "#1a2a1a" : ""};
+                        border-left:3px solid ${isSlotSel ? "#cc3344" : isActive ? "#44cc44" : "transparent"};
+                    `;
+
+                    const degLabel = document.createElement("span");
+                    degLabel.textContent = `${i * 30}°`;
+                    degLabel.style.cssText = "font-weight:bold;color:#ff7766;min-width:36px;";
+
+                    const poseLabel = document.createElement("span");
+                    poseLabel.style.cssText = `flex:1;color:${hasPose ? "#a6e3a1" : "#555"};`;
+                    if (isEditing) {
+                        poseLabel.textContent = "✏ 編集中...";
+                    } else if (hasPose) {
+                        const layerIds = Object.keys(slot.pose);
+                        if (layerIds.length === 1 && slot.degree === 0) {
+                            const lid = layerIds[0];
+                            const node = this._findNodeById(lid);
+                            const lname = (this.state.renamed?.[lid] ?? node?.name) || lid;
+                            poseLabel.textContent = `✓ : ${lname}`;
+                        } else if (layerIds.length === 1) {
+                            poseLabel.textContent = `✓`;
+                        } else {
+                            poseLabel.textContent = `✓ (${layerIds.length}レイヤー)`;
+                        }
+                    } else {
+                        poseLabel.textContent = "−";
+                    }
+
+                    const editBtn = document.createElement("button");
+                    editBtn.className = "psd-btn";
+                    editBtn.textContent = isEditing ? "✓確定" : "✏編集";
+                    editBtn.style.cssText = "padding:1px 5px;font-size:10px;flex-shrink:0;";
+                    editBtn.onclick = e => {
+                        e.stopPropagation();
+                        this._selectedPswSlotIdx = i;
+                        if (this._pswEditingPointId === pt.id) {
+                            // 確定: slot0のレイヤーリスト（or既存スロットのリスト）で現在のposeを保存
+                            const refPose = slot.pose || pt.slots[0]?.pose;
+                            if (refPose) {
+                                const newPose = {};
+                                for (const lid of Object.keys(refPose)) {
+                                    newPose[lid] = JSON.parse(JSON.stringify(this.state.pose[lid] ?? { angle: 0, tx: 0, ty: 0 }));
+                                }
+                                slot.pose = newPose;
+                            }
+                            this._pswEditingPointId = null;
+                        } else {
+                            // 編集開始：スロットのポーズをstate.poseにロード
+                            this._pswEditingPointId = pt.id;
+                            if (slot.pose) {
+                                // スロットに登録済みポーズがある場合は読み込む
+                                Object.assign(this.state.pose, JSON.parse(JSON.stringify(slot.pose)));
+                            } else if (i > 0 && pt.slots[0]?.pose) {
+                                // 未登録スロットは slot0 のポーズを初期値としてロード
+                                Object.assign(this.state.pose, JSON.parse(JSON.stringify(pt.slots[0].pose)));
+                            }
+                            // PSWハンドルをこのスロットの角度に移動
+                            pt.angle = PSW_STEP * i;
+                        }
+                        this._renderPswTab();
+                        this._drawPreview();
+                    };
+
+                    slotRow.onclick = () => {
+                        this._selectedPswSlotIdx = i;
+                        this._pswEditingPointId = null; // 編集モード終了
+                        pt.angle = PSW_STEP * i;
+                        this._renderPswTab();
+                        this._drawPreview();
+                    };
+
+                    slotRow.append(degLabel, poseLabel, editBtn);
+                    this._pswSlotListEl.appendChild(slotRow);
+                }
+            }
+        }
+    }
+
+    _mkPswLayerEl(pswLayer) {
+        const isLayerSel = this._selectedPswLayerId === pswLayer.id;
+        const row = document.createElement("div");
+        row.className = "psd-custom-group" + (isLayerSel ? " selected" : "");
+        row.style.cssText = `padding:3px 8px;display:flex;align-items:center;gap:4px;cursor:pointer;background:${isLayerSel ? "#2a0d10" : "#1e0a0a"};border-left:3px solid #cc3344;`;
+
+        const icon = document.createElement("span");
+        icon.textContent = "🔀";
+        icon.style.flexShrink = "0";
+
+        const nameEl = document.createElement("span");
+        nameEl.className = "cg-name";
+        nameEl.textContent = `[PSW] ${pswLayer.name}`;
+        nameEl.style.color = "#ff7766";
+        nameEl.title = t("dblClickToRename");
+
+        let clickTimer = null;
+        nameEl.addEventListener("click", e => {
+            e.stopPropagation();
+            if (clickTimer) return;
+            clickTimer = setTimeout(() => {
+                clickTimer = null;
+                this.selectedIds.clear(); this._selectedCgId = null;
+                this._selectedSwLayerId = null;
+                this._selectedPswLayerId = isLayerSel ? null : pswLayer.id;
+                this._renderLayerTab();
+            }, 260);
+        });
+        nameEl.addEventListener("dblclick", e => {
+            e.stopPropagation();
+            clearTimeout(clickTimer); clickTimer = null;
+            const input = document.createElement("input");
+            input.value = pswLayer.name;
+            input.style.cssText = "width:120px;background:#313244;border:1px solid #cc3344;border-radius:3px;color:#ff7766;padding:1px 6px;font-size:12px;outline:none;";
+            nameEl.replaceWith(input); input.focus(); input.select();
+            const commit = () => {
+                if (!input.isConnected) return;
+                const v = input.value.trim(); if (v) pswLayer.name = v;
+                nameEl.textContent = `[PSW] ${pswLayer.name}`;
+                input.replaceWith(nameEl);
+                if (this._activeTab === 'psw') this._renderPswTab();
+            };
+            input.addEventListener("blur", commit);
+            input.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); commit(); } if (ev.key === "Escape") input.replaceWith(nameEl); });
+        });
+
+        row.addEventListener("click", e => {
+            if (e.target === nameEl) return;
+            this.selectedIds.clear(); this._selectedCgId = null;
+            this._selectedSwLayerId = null;
+            this._selectedPswLayerId = isLayerSel ? null : pswLayer.id;
+            this._renderLayerTab();
+        });
+
+        const badge = document.createElement("span"); badge.className = "cg-badge"; badge.textContent = pswLayer.points.length;
+        row.append(icon, nameEl, badge);
+        return row;
     }
 
     _moveItemToGroup(itemId, groupId) {
@@ -4321,11 +5093,16 @@ class PSDModal {
         (config.sw_layers || []).forEach(swl => {
             (swl.points || []).forEach(pt => { swAngles[pt.id] = pt.angle ?? 0; });
         });
+        const pswAngles = {};
+        (config.psw_layers || []).forEach(pswl => {
+            (pswl.points || []).forEach(pt => { pswAngles[pt.id] = pt.angle ?? 0; });
+        });
         const content = {
-            visibility: JSON.parse(JSON.stringify(config.visibility || {})),
-            pose:       JSON.parse(JSON.stringify(config.pose       || {})),
-            sw_angles:  swAngles,
-            thumbnail:  null,
+            visibility:  JSON.parse(JSON.stringify(config.visibility || {})),
+            pose:        JSON.parse(JSON.stringify(config.pose       || {})),
+            sw_angles:   swAngles,
+            psw_angles:  pswAngles,
+            thumbnail:   null,
         };
         const node = this.node;
         {
@@ -4700,6 +5477,13 @@ class LibraryModal {
                         });
                     });
                 }
+                if (data.psw_angles && config.psw_layers) {
+                    config.psw_layers.forEach(pswl => {
+                        (pswl.points || []).forEach(pt => {
+                            if (data.psw_angles[pt.id] !== undefined) pt.angle = data.psw_angles[pt.id];
+                        });
+                    });
+                }
                 const w = findWidget(node, "layer_config");
                 if (w) w.value = JSON.stringify(config);
                 drawNodeCanvas(node);
@@ -4779,17 +5563,20 @@ function setupPreviewInteraction(canvas, node) {
             return;
         }
 
-        // リグポイント・SWポイントのヒットテスト
+        // リグポイント・SWポイント・PSWポイントのヒットテスト
         if (node._layerImages && node._psdLayers) {
             let config = {};
             try { config = JSON.parse(findWidget(node, "layer_config")?.value || "{}"); } catch (_) {}
-            if (config.rigging || config.sw_layers?.length) {
+            if (config.rigging || config.sw_layers?.length || config.psw_layers?.length) {
                 const cam = node._camera;
                 const { x: wx, y: wy } = toWorld(e.clientX, e.clientY);
                 const imgMap = getEffectiveImageMap(node, config);
+                // PSWポーズを適用した有効ポーズでヒットテスト
+                const effectivePose = computePswEffectivePose(config.pose || {}, config.psw_layers || [], null, node._pswEnabled !== false);
                 const hit = hitTestRig(wx, wy, node._psdLayers, imgMap,
-                                       config.rigging || {}, config.pose, 'pose', cam.zoom,
-                                       config.layer_parent || {}, config.custom_groups || [], node._rigPointSize ?? 1.0, config.sw_layers || []);
+                                       config.rigging || {}, effectivePose, 'pose', cam.zoom,
+                                       config.layer_parent || {}, config.custom_groups || [], node._rigPointSize ?? 1.0,
+                                       config.sw_layers || [], config.psw_layers || []);
                 if (hit && (e.altKey || e.ctrlKey) && (hit.type === 'r' || hit.type === 'mr')) {
                     if (!config.pose) config.pose = {};
                     if (!config.pose[hit.layerId]) config.pose[hit.layerId] = { angle: 0, tx: 0, ty: 0 };
@@ -4810,6 +5597,19 @@ function setupPreviewInteraction(canvas, node) {
                                         pivotX: swInfo.x ?? 0,
                                         pivotY: swInfo.y ?? 0 };
                         node._selectedSwPointInfo = { swLayerId: hit.swLayerId, pointId: hit.swPointId };
+                        canvas.style.cursor = "crosshair";
+                        return;
+                    }
+                }
+                if (hit && hit.type === 'psw_handle') {
+                    isRigDrag = true;
+                    const pswLayer = (config.psw_layers || []).find(l => l.id === hit.pswLayerId);
+                    const pswInfo = pswLayer?.points?.find(p => p.id === hit.pswPointId);
+                    if (pswInfo) {
+                        rigDragInfo = { hit, config,
+                                        pivotX: pswInfo.x ?? 0,
+                                        pivotY: pswInfo.y ?? 0 };
+                        node._selectedPswPointInfo = { pswLayerId: hit.pswLayerId, pointId: hit.pswPointId };
                         canvas.style.cursor = "crosshair";
                         return;
                     }
@@ -4871,6 +5671,15 @@ function setupPreviewInteraction(canvas, node) {
                 const swLayer = (config.sw_layers || []).find(l => l.id === hit.swLayerId);
                 const swInfo = swLayer?.points?.find(p => p.id === hit.swPointId);
                 if (swInfo) swInfo.angle = Math.atan2(wy - rigDragInfo.pivotY, wx - rigDragInfo.pivotX);
+            } else if (hit.type === 'psw_handle') {
+                // PSWハンドルの角度変更
+                const pswLayer = (config.psw_layers || []).find(l => l.id === hit.pswLayerId);
+                const pswInfo = pswLayer?.points?.find(p => p.id === hit.pswPointId);
+                if (pswInfo) {
+                    const _raw  = Math.atan2(wy - rigDragInfo.pivotY, wx - rigDragInfo.pivotX);
+                    const _norm = ((_raw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+                    pswInfo.angle = Math.min(_norm, (Math.PI / 6) * Math.max((pswInfo.slots?.length || 1) - 1, 0));
+                }
             } else if (hit.type === 'r' || hit.type === 'mr') {
                 const curAngle = Math.atan2(wy - pivotY, wx - pivotX);
                 p.angle = startAngle + (curAngle - initAngle);
@@ -5529,10 +6338,15 @@ app.registerExtension({
                 (config.sw_layers || []).forEach(swl => {
                     (swl.points || []).forEach(pt => { swAngles[pt.id] = pt.angle ?? 0; });
                 });
+                const pswAngles = {};
+                (config.psw_layers || []).forEach(pswl => {
+                    (pswl.points || []).forEach(pt => { pswAngles[pt.id] = pt.angle ?? 0; });
+                });
                 const snap = {
                     visibility: JSON.parse(JSON.stringify(config.visibility || {})),
                     pose:       JSON.parse(JSON.stringify(config.pose       || {})),
                     sw_angles:  swAngles,
+                    psw_angles: pswAngles,
                     thumbnail:  null,
                 };
                 if (node._nodeCanvas) {
@@ -5610,6 +6424,27 @@ app.registerExtension({
                 }, 1800);
             };
 
+            // ---- PSW トグルボタン ----
+            node._pswEnabled = true;
+            const pswToggleBtn = document.createElement("button");
+            const updatePswToggle = () => {
+                const on = node._pswEnabled;
+                pswToggleBtn.textContent = "PSW";
+                pswToggleBtn.style.cssText = btnStyle
+                    + `;flex-shrink:0;padding:4px 8px;`
+                    + `background:${on ? "#0a1e4a" : "#4a0a0a"};`
+                    + `border-color:${on ? "#3366cc" : "#cc3333"};`
+                    + `color:${on ? "#88aaff" : "#ff6666"};`
+                    + `font-weight:bold;`;
+                pswToggleBtn.title = on ? "PSW ON — クリックでOFF（R/MR自由操作モード）" : "PSW OFF — クリックでON（プリセットポーズモード）";
+            };
+            pswToggleBtn.onclick = () => {
+                node._pswEnabled = !node._pswEnabled;
+                updatePswToggle();
+                app.graph?.setDirtyCanvas(true, true);
+            };
+            updatePswToggle();
+
             // ---- キーフレームパネルトグルボタン ----
             node._kfPanelVisible = false;
             node._keyframes      = [];
@@ -5635,7 +6470,7 @@ app.registerExtension({
                 app.graph?.setDirtyCanvas(true, true);
             };
 
-            row3.append(captureBtn, kfToggleBtn);
+            row3.append(pswToggleBtn, captureBtn, kfToggleBtn);
 
             // ---- プレビュー ----
             const previewWrap = buildPreviewWidget(node);

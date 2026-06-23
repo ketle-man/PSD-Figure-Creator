@@ -14,7 +14,8 @@ and compositing the result as `IMAGE` + `MASK` outputs.
 - **Rigging system** — place control points on layers directly on the canvas:
   - **R** (blue) — rotation only
   - **MR** (red/orange) — move + rotate
-  - **SW** (green) — switch: rotate a handle to step through up to 12 slots; use **+L** to add an individual layer (1 slot), **+P** to add a group/folder expanded per-layer (Piece, N slots), or **+C** to add a group/folder composited as one (Composite, 1 slot)
+  - **LSW** (green) — layer switch: rotate a handle to step through up to 12 slots; use **+L** to add an individual layer (1 slot), **+P** to add a group/folder expanded per-layer (Piece, N slots), or **+C** to add a group/folder composited as one (Composite, 1 slot)
+  - **PSW** (white) — pose switch: rotate a handle to apply registered poses; register R/MR pose states to up to 12 slots in 30° increments
 - **Setup mode / Pose mode** — configure rigs in setup mode, animate in pose mode
 - **Keyframe animation** — record poses at specific frames, interpolate between keyframes (linear lerp for position, shortest-path for angles), preview playback at configurable FPS, and export as WebM video (Chrome/Edge). Save/load full animation projects to the library.
 - **Library** — save/load named model files (`.psd-model.json`), pose files, and keyframe animation projects
@@ -164,9 +165,10 @@ ComfyUI/custom_nodes/PSD-Figure-Creator/user_data/  →  copy to the same path o
 
 | Tab | Contents |
 |---|---|
-| Layers | Layer tree, custom group management, rig mode buttons (R / MR / SW) |
+| Layers | Layer tree, custom group management, rig mode buttons (R / MR / LSW / PSW) |
 | Parent | Parent–child hierarchy for propagated transforms |
-| Switch | SW layer list and group-slot editor |
+| LSwitch | LSW layer list and group-slot editor |
+| PSwitch | PSW point list, slot management, and pose registration |
 
 ---
 
@@ -178,11 +180,11 @@ Blue dot. Drag in pose mode to rotate the layer around the placed pivot.
 ### MR — Move + Rotate
 Red origin + orange handle. Drag the handle to move and rotate simultaneously.
 
-### SW — Switch
+### LSW — Layer Switch
 Green origin + cyan handle. Rotating the handle steps through registered slots in 30° increments (maximum 12 slots × 30° = 360°).  
 Drag the origin in setup mode to reposition; drag the handle to adjust radius and initial angle.
 
-**Slot entry types** (configured in the Switch tab):
+**Slot entry types** (configured in the LSwitch tab):
 
 | Button | Entry | Badge | Slots |
 |---|---|---|---|
@@ -191,6 +193,26 @@ Drag the origin in setup mode to reposition; drag the handle to adjust radius an
 | `+C` | Custom group or PSD folder (Composite) | `[C]` | 1 slot (all members rendered together) |
 
 A slot entry whose group or folder has been deleted shows a red row background and a ⚠ icon (orphaned). Delete it manually before adding new entries.
+
+### PSW — Pose Switch
+White origin + purple handle. Rotating the handle applies the registered pose for the active slot.
+
+**Usage** (configured in the PSwitch tab):
+
+1. In Setup mode, click the **PSW** button (a PSW layer is created automatically on first use), then click the canvas to place a point
+2. Use **`+Slot`** to add slots in 30° increments (up to 12 slots); **`−Slot`** removes the last slot
+3. Select the **slot 0 (0°)** row, then in Pose mode use **`+MLP`** to register all layer poses, or select a layer in the layer tree and use **`+SLP`** to register a single layer's pose; **`−LP`** clears the slot
+4. For slots other than 0°: click the slot row → click **`✏ Edit`** to load the pose → adjust → click **`✓ Confirm`** to save
+5. The handle angle determines the active slot: 0°–30° → slot 0, 30°–60° → slot 1, and so on; the movement range is locked to **(slot count − 1) × 30°**
+
+Multiple PSW points operate independently and their poses are composited together.
+
+The **`PSW` toggle button** (left of the Capture button on the node) enables or disables PSW globally:
+
+| State | Color | Effect |
+|---|---|---|
+| ON (default) | Blue | PSW preset poses are applied based on handle angle |
+| OFF | Red | PSW disabled — all layers (including PSW-registered ones) are freely controlled by R/MR |
 
 ---
 
@@ -235,6 +257,7 @@ Click or drag the timeline canvas to scrub to any frame. Recorded keyframes appe
 | Position (tx / ty) | Linear lerp |
 | Rotation angle | Shortest-path angle lerp (handles 0 ↔ 360° wrap) |
 | SW handle angle | Shortest-path angle lerp |
+| PSW handle angle | Shortest-path angle lerp |
 | Visibility | Step: value of the previous keyframe |
 
 ### Project Save / Load
@@ -315,12 +338,25 @@ psd-image-loader/
       ]
     }]
   }],
+  "psw_layers": [{
+    "id": "...", "name": "PSW1",
+    "points": [{
+      "id": "...", "name": "PSW1",
+      "x": 512, "y": 512,
+      "radius": 80, "angle": 0,
+      "slots": [
+        { "degree": 0,  "pose": null },                          // empty slot
+        { "degree": 30, "pose": { "<layerId>": { "angle": 0.5, "tx": 10, "ty": -5 } } }
+      ]
+    }]
+  }],
   "keyframes": [
     {
       "frame": 0,
       "visibility": { "<layerId>": true },
       "pose":       { "<layerId>": { "angle": 0, "tx": 0, "ty": 0 } },
-      "sw_angles":  { "<pointId>": 0 }
+      "sw_angles":  { "<pointId>": 0 },
+      "psw_angles": { "<pointId>": 0 }
     }
   ],
   "kf_total_frames": 60,
@@ -335,6 +371,19 @@ psd-image-loader/
 - **ComfyUI** (latest)
 - **Python 3.10+**
 - **psd-tools ≥ 1.9.0**
+
+---
+
+## Troubleshooting
+
+### `[INFO] Unknown image resource` / `Unknown tagged block` in the console
+
+```
+[INFO] Unknown image resource 1092
+[INFO] Unknown tagged block: <Tag.CAI: b'CAI '>, ...
+```
+
+These are informational messages from the **psd-tools** library (not errors). They appear when a PSD file contains metadata that psd-tools does not yet recognize — for example, resources added by recent versions of Photoshop such as Generative Fill (`CAI` tag). The file is still read and composited correctly; the unknown data is simply skipped. No action is required.
 
 ---
 
