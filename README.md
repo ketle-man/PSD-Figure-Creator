@@ -17,7 +17,7 @@ and compositing the result as `IMAGE` + `MASK` outputs.
   - **LSW** (green) — layer switch: rotate a handle to step through up to 12 slots; use **+L** to add an individual layer (1 slot), **+P** to add a group/folder expanded per-layer (Piece, N slots), or **+C** to add a group/folder composited as one (Composite, 1 slot)
   - **PSW** (white) — pose switch: rotate a handle to apply registered poses; register R/MR pose states to up to 12 slots in 30° increments
 - **Setup mode / Pose mode** — configure rigs in setup mode, animate in pose mode
-- **Keyframe animation** — record poses at specific frames, interpolate between keyframes (linear lerp for position, shortest-path for angles), preview playback at configurable FPS, and export as WebM video (Chrome/Edge). Save/load full animation projects to the library.
+- **Keyframe animation** — record poses at specific frames, interpolate between keyframes (linear lerp for position, shortest-path for angles), preview playback at configurable FPS, and export as WebM video (Chrome/Edge) or transparent animated GIF. Save/load full animation projects to the library.
 - **Library** — save/load named model files (`.psd-model.json`), pose files, and keyframe animation projects
 - **Background options** — checker pattern / solid color / local image / upstream `IMAGE` node
 - **Capture → Queue Prompt** — bake the current canvas state to an output image
@@ -63,6 +63,10 @@ and compositing the result as `IMAGE` + `MASK` outputs.
 
 ![Capture used inside a workflow](docs/7_capture.png)
 
+### Editor — PSwitch tab (Setup mode)
+
+![PSwitch tab with PSW point configuration](docs/8_pose_switch.png)
+
 ---
 
 ## Installation
@@ -87,8 +91,10 @@ A ready-to-use sample is bundled in the `user_data/` directory:
 |---|---|
 | `user_data/sample_1.psd` | Sample character PSD |
 | `user_data/models/sample.psd-model.json` | Pre-configured rig (R/MR points, parent hierarchy, SW switch) |
+| `user_data/models/sample2_lswpswset-model.psd-model.json` | Pre-configured rig with LSW and PSW points |
 | `user_data/poses/pose1.pose.json` | Sample pose 1 |
 | `user_data/poses/pose2.pose.json` | Sample pose 2 |
+| `user_data/poses/project-psw.pose.json` | Sample keyframe animation project using PSW |
 
 **To use the sample:**
 1. Copy `user_data/sample_1.psd` to `ComfyUI/input/psd/`
@@ -147,7 +153,7 @@ ComfyUI/custom_nodes/PSD-Figure-Creator/user_data/  →  copy to the same path o
  ┌──────────────────────────────────┐   ← keyframe panel (⏱ to toggle)
  │ [+KF][🗑KF]|[+CK][-CK]|[↔]|[0][◀][f]/[t][▶] │
  │ ◆────◆──────── timeline ────────── │
- │ [New] FPS[24] [💾Proj] [🎬WebM]  [▶▶] [■] │
+ │ [New] FPS[24] [💾Proj] [🎬WebM][🎞️GIF] [▶▶] [■] │
  └──────────────────────────────────┘
  ┌────────────────────────┐
  │  Preview canvas        │
@@ -251,6 +257,7 @@ Toggle the keyframe panel with the **⏱** button on the node.
 | `FPS` | Playback and export frame rate (default 24) |
 | `💾 Proj` | Save the animation project to the library (name: `project-YYYYMMDDHHMMSS`) |
 | `🎬 WebM` | Export as a WebM video file (Chrome/Edge recommended) |
+| `🎞️ GIF` | Export as a transparent animated GIF image |
 | `▶` / `■` | Start / stop playback preview (`▶` is double-width) |
 
 ### Timeline

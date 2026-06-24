@@ -1,0 +1,1669 @@
+{
+  "_type": "kf_project",
+  "keyframes": [
+    {
+      "frame": 0,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 7.275968832255558,
+          "ty": 0.8790715475742559
+        },
+        "1": {
+          "angle": -5.91006523490365,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "11": {
+          "angle": 0.1501768663840134,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.3591716716863829
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 0.24288702342128143
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      },
+      "camera": {
+        "zoom": 0.24880781018798512,
+        "x": -1588.8172659745937,
+        "y": -654.4217613148517,
+        "roll": 0
+      }
+    },
+    {
+      "frame": 6,
+      "pose": {
+        "0": {
+          "angle": -0.1514189462623563,
+          "tx": 11.609180263009705,
+          "ty": 9.214900737780454,
+          "flipX": false,
+          "flipY": false
+        },
+        "1": {
+          "angle": -6.233529521304963,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833,
+          "flipX": false,
+          "flipY": false
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034,
+          "flipX": false,
+          "flipY": false
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756,
+          "flipX": false,
+          "flipY": false
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.3591716716863829
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 0.5319581966284103
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 8,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 12.844833682349986,
+          "ty": 2.204186247408529,
+          "flipX": false,
+          "flipY": false
+        },
+        "1": {
+          "angle": -6.3413509501054,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833,
+          "flipX": false,
+          "flipY": false
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034,
+          "flipX": false,
+          "flipY": false
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756,
+          "flipX": false,
+          "flipY": false
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.3591716716863829
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 0.6283152543641198
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 9,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 18.704901617868018,
+          "ty": -0.25312061599956903,
+          "flipX": false,
+          "flipY": false
+        },
+        "1": {
+          "angle": -6.395261664505619,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833,
+          "flipX": false,
+          "flipY": false
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "11": {
+          "angle": 0.14600537420936266,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034,
+          "flipX": false,
+          "flipY": false
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756,
+          "flipX": false,
+          "flipY": false
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.3591716716863829
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 0.6764937832319746
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 10,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 14.028676213401013,
+          "ty": -0.18984046199967677,
+          "flipX": false,
+          "flipY": false
+        },
+        "1": {
+          "angle": -6.449172378905837,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833,
+          "flipX": false,
+          "flipY": false
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "11": {
+          "angle": 0.13597084239956886,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034,
+          "flipX": false,
+          "flipY": false
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756,
+          "flipX": false,
+          "flipY": false
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.3591716716863829
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 0.7246723120998294
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 13,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.3591716716863829
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 0.8692078987033938
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 19,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": -0.32553299263145163,
+          "ty": 7.24536028222451,
+          "flipX": false,
+          "flipY": false
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833,
+          "flipX": false,
+          "flipY": false
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034,
+          "flipX": false,
+          "flipY": false
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756,
+          "flipX": false,
+          "flipY": false
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.3591716716863829
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.1555343792882116
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 24,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": -0.05167565979332983,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.3591716716863829
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      },
+      "camera": {
+        "zoom": 1.305716782647004,
+        "x": -367.0357947939465,
+        "y": -160.90082346064398,
+        "roll": 0
+      }
+    },
+    {
+      "frame": 25,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": 0.4054044938727415
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 28,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833,
+          "flipX": false,
+          "flipY": false
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "9": {
+          "angle": 0.3818141868952101,
+          "tx": -2.8429876629178352,
+          "ty": 2.7237091736745924,
+          "flipX": false,
+          "flipY": false
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034,
+          "flipX": false,
+          "flipY": false
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756,
+          "flipX": false,
+          "flipY": false
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": 0.4054044938727415
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 29,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": 0.4054044938727415
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 30,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 3.076234560896637,
+          "ty": 4.897864623798739,
+          "flipX": false,
+          "flipY": false
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833,
+          "flipX": false,
+          "flipY": false
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034,
+          "flipX": false,
+          "flipY": false
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756,
+          "flipX": false,
+          "flipY": false
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0,
+          "flipX": false,
+          "flipY": false
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": 0.13121704814205482
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 31,
+      "pose": {
+        "0": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.14297039758863186
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 43,
+      "camera": {
+        "zoom": 0.6160389760000002,
+        "x": -296.01894490406005,
+        "y": -161.35537219865745,
+        "roll": 0
+      }
+    },
+    {
+      "frame": 45,
+      "pose": {
+        "0": {
+          "angle": 0.04715936342982863,
+          "tx": 7.5766870123575245,
+          "ty": -2.8369877874075087
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.14297039758863186
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 49,
+      "pose": {
+        "0": {
+          "angle": -0.08350315394219376,
+          "tx": 7.5766870123575245,
+          "ty": -2.8369877874075087
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "10": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.14297039758863186
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    },
+    {
+      "frame": 59,
+      "pose": {
+        "0": {
+          "angle": -0.08350315394219376,
+          "tx": 7.5766870123575245,
+          "ty": -2.8369877874075087
+        },
+        "1": {
+          "angle": -0.3277192149269078,
+          "tx": 10.140483069068523,
+          "ty": -10.778840321734833
+        },
+        "2": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "3": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "4": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "5": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        },
+        "9": {
+          "angle": 0,
+          "tx": -1.368993346104844,
+          "ty": 0.48048244878305013
+        },
+        "10": {
+          "angle": 0,
+          "tx": -0.450174820336656,
+          "ty": -1.1092953622012374
+        },
+        "11": {
+          "angle": 0.03176788228592564,
+          "tx": 0,
+          "ty": 0
+        },
+        "7.1": {
+          "angle": 0,
+          "tx": -11.127113429370866,
+          "ty": -5.761167727517034
+        },
+        "6.1": {
+          "angle": 0,
+          "tx": -14.326990259135755,
+          "ty": -3.7142879697959756
+        },
+        "undefined": {
+          "angle": 0,
+          "tx": 0,
+          "ty": 0
+        }
+      },
+      "sw_angles": {
+        "swp_gyn5gmbrql": -0.14297039758863186
+      },
+      "psw_angles": {
+        "pswp_n6htvm6i4h": 1.3941397797755597
+      },
+      "pswEnabled": true,
+      "visibility": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true,
+        "8": true,
+        "9": true,
+        "10": true,
+        "11": true,
+        "6.0": true,
+        "6.1": true,
+        "6.2": true,
+        "7.0": true,
+        "7.1": true,
+        "7.2": true
+      }
+    }
+  ],
+  "kf_total_frames": 60,
+  "kf_fps": 24,
+  "thumbnail": "data:image/png;base64,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"
+}

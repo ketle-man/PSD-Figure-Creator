@@ -1975,6 +1975,41 @@ async function exportVideoWebM(node, onProgress) {
     return new Blob(chunks, { type: "video/webm" });
 }
 
+// アニメーションを透過 GIF としてエクスポート
+// onProgress(currentFrame, totalFrames) でプログレスコールバック
+async function exportAnimatedGIF(node, onProgress) {
+    const { AnimGifEncoder } = await import("./gif_encoder.js");
+    const fps   = Math.max(1, node._kfFps || 24);
+    const total = Math.max(2, node._kfTotalFrames || 60);
+    const fr    = computeOutputFrame(node);
+    if (!fr) return null;
+    const { outW, outH } = fr;
+
+    const offCanvas    = document.createElement("canvas");
+    offCanvas.width    = outW;
+    offCanvas.height   = outH;
+    const ctx = offCanvas.getContext("2d");
+
+    const enc = new AnimGifEncoder(outW, outH);
+    enc.setFps(fps);
+    enc.setQuality(3); // 1=最高品質, 30=最速
+
+    const savedFrame = node._kfCurrentFrame;
+
+    for (let f = 0; f < total; f++) {
+        seekToFrame(node, f, { silent: true });
+        renderToOutputCanvas(node, offCanvas);
+        enc.addFrame(ctx.getImageData(0, 0, outW, outH));
+        onProgress?.(f + 1, total);
+        await new Promise(r => setTimeout(r, 0));
+    }
+
+    seekToFrame(node, savedFrame);
+
+    const bytes = enc.encode();
+    return new Blob([bytes], { type: "image/gif" });
+}
+
 // キーフレームアニメーションをライブラリのポーズとしてプロジェクト保存
 async function saveKeyframeProject(node) {
     const kfs = node._keyframes || [];
@@ -2428,20 +2463,25 @@ class PSDModal {
         this._pswSlotListEl.style.cssText = "flex:1;overflow-y:auto;padding:4px 8px;font-size:11px;min-height:0;";
         const pswBar = document.createElement("div");
         pswBar.className = "psd-group-bar";
-        const mkPswBtn = (text, tipKey, fn) => {
+        const mkPswBtn = (text, tipKey, fn, bg, borderCol) => {
             const btn = document.createElement("button");
             btn.className = "psd-btn";
             btn.textContent = text;
             btn.title = t(tipKey);
             btn.onclick = fn;
+            if (bg)        btn.style.background   = bg;
+            if (borderCol) btn.style.borderColor   = borderCol;
             return btn;
         };
+        const pswSlotSep = document.createElement("span");
+        pswSlotSep.style.cssText = "margin-left:8px;display:inline-block;";
         pswBar.append(
-            mkPswBtn("+Slot", "addPswSlotTooltip",   () => this._addPswSlot()),
-            mkPswBtn("−Slot", "deletePswSlotTooltip",() => this._removePswSlot()),
-            mkPswBtn("+MLP", "setPswPoseTooltip",   () => this._setMlpPose()),
-            mkPswBtn("+SLP", "setSlpPoseTooltip",   () => this._setSlpPose()),
-            mkPswBtn("−LP",  "clearPswPoseTooltip", () => this._clearPswPose()),
+            mkPswBtn("+MLP",  "setPswPoseTooltip",    () => this._setMlpPose(),    "#3a3000", "#7a6500"),
+            mkPswBtn("+SLP",  "setSlpPoseTooltip",    () => this._setSlpPose(),    "#003040", "#007090"),
+            mkPswBtn("−LP",   "clearPswPoseTooltip",  () => this._clearPswPose()),
+            pswSlotSep,
+            mkPswBtn("+Slot", "addPswSlotTooltip",    () => this._addPswSlot()),
+            mkPswBtn("−Slot", "deletePswSlotTooltip", () => this._removePswSlot()),
         );
         pswTabContent.append(this._pswListEl, this._pswSlotListEl, pswBar);
         this._selectedPswLayerId  = null;
@@ -2616,7 +2656,7 @@ class PSDModal {
                     ["順序変更", "レイヤー行をドラッグ&ドロップ"],
                     ["カスタムグループ作成", "レイヤーを複数選択して「グループ作成」ボタン — Lスイッチタブでレイヤー単位に展開可能"],
                     ["グループ解除", "カスタムグループを選択して「グループ解除」ボタン"],
-                    ["LSWレイヤー追加/削除", "「SW追加」「SW削除」ボタン（Lスイッチタブで設定）"],
+                    ["LSWレイヤー追加/削除", "「LSW追加」「LSW削除」ボタン（Lスイッチタブで設定）"],
                     ["PSWレイヤー追加/削除", "「PSW追加」「PSW削除」ボタン（Pスイッチタブで設定）"],
                     ["PSWレイヤー名変更", "PSWレイヤー名をダブルクリックして編集（レイヤータブ・Pスイッチタブ共通）"],
                 ],
@@ -2700,6 +2740,21 @@ class PSDModal {
                     ["カメラリセット", "ノード上の RC ボタン"],
                 ],
             },
+            {
+                title: "キーフレームアニメーション",
+                rows: [
+                    ["+KF / 🗑KF", "現在フレームにポーズのキーフレームを追加／削除"],
+                    ["+CK / -CK", "現在フレームにカメラをキーフレーム登録／削除"],
+                    ["↔ キー移動", "ON のときタイムライン上でキーフレームをドラッグ移動（プレイヘッド操作は無効）"],
+                    ["0 ボタン", "フレーム 0 に移動"],
+                    ["New ボタン", "全キーフレームを削除して初期化（確認あり）"],
+                    ["▶ / ■", "アニメーション再生／停止"],
+                    ["FPS", "再生・エクスポート時のフレームレート"],
+                    ["💾 Proj", "キーフレームアニメーションをライブラリにプロジェクトとして保存"],
+                    ["🎬 WebM", "アニメーションを WebM 動画としてエクスポート（Chrome推奨）"],
+                    ["🎞️ GIF", "アニメーションを透過 GIF 画像としてエクスポート"],
+                ],
+            },
         ] : isZh ? [
             {
                 title: "基本操作",
@@ -2719,7 +2774,7 @@ class PSDModal {
                     ["调整顺序", "拖放图层行"],
                     ["创建自定义组", "多选图层后点击「创建组」按钮 — 可在L切换选项卡中按图层展开"],
                     ["解除组", "选中自定义组后点击「解除组」按钮"],
-                    ["LSW图层", "使用「添加SW」/「删除SW」按钮（在L切换选项卡中配置）"],
+                    ["LSW图层", "使用「添加LSW」/「删除LSW」按钮（在L切换选项卡中配置）"],
                     ["PSW图层", "使用「添加PSW」/「删除PSW」按钮（在P切换选项卡中配置）"],
                     ["PSW图层重命名", "双击PSW图层名称进行编辑（图层选项卡/P切换选项卡均可）"],
                 ],
@@ -2801,6 +2856,21 @@ class PSDModal {
                     ["重置摄像机", "节点上的 RC 按钮"],
                 ],
             },
+            {
+                title: "关键帧动画",
+                rows: [
+                    ["+KF / 🗑KF", "在当前帧添加／删除姿势关键帧"],
+                    ["+CK / -CK", "在当前帧注册／删除摄像机关键帧"],
+                    ["↔ 键帧移动", "开启时可在时间轴上拖动移动关键帧（禁用播放头操作）"],
+                    ["0 按钮", "跳转到第 0 帧"],
+                    ["New 按钮", "删除所有关键帧并初始化（需确认）"],
+                    ["▶ / ■", "播放／停止动画"],
+                    ["FPS", "播放和导出的帧率"],
+                    ["💾 Proj", "将关键帧动画作为项目保存到库"],
+                    ["🎬 WebM", "将动画导出为WebM视频（推荐Chrome）"],
+                    ["🎞️ GIF", "将动画导出为透明GIF图像"],
+                ],
+            },
         ] : [
             {
                 title: "Basic Operations",
@@ -2820,7 +2890,7 @@ class PSDModal {
                     ["Reorder", "Drag & drop layer rows"],
                     ["Create Custom Group", "Select multiple layers, then click 'Group' — expandable per-layer in the LSwitch tab"],
                     ["Ungroup", "Select a custom group, then click 'Ungroup'"],
-                    ["LSW Layer", "Use 'Add SW' / 'Del SW' buttons (configure in LSwitch tab)"],
+                    ["LSW Layer", "Use 'Add LSW' / 'Del LSW' buttons (configure in LSwitch tab)"],
                     ["PSW Layer", "Use 'Add PSW' / 'Del PSW' buttons (configure in PSwitch tab)"],
                     ["Rename PSW Layer", "Double-click a PSW layer name to edit it (works in both Layer tab and PSwitch tab)"],
                 ],
@@ -2902,6 +2972,21 @@ class PSDModal {
                     ["Pan", "Left-drag"],
                     ["Roll", "Alt + right-drag"],
                     ["Reset", "Click RC button on the node"],
+                ],
+            },
+            {
+                title: "Keyframe Animation",
+                rows: [
+                    ["+KF / 🗑KF", "Add / remove a pose keyframe at the current frame"],
+                    ["+CK / -CK", "Register / remove a camera keyframe at the current frame"],
+                    ["↔ Key Move", "When ON, drag keyframes on the timeline (playhead interaction disabled)"],
+                    ["0 button", "Jump to frame 0"],
+                    ["New button", "Clear all keyframes and reset (confirmation required)"],
+                    ["▶ / ■", "Play / stop the animation"],
+                    ["FPS", "Frame rate for playback and export"],
+                    ["💾 Proj", "Save the keyframe animation to the library as a project"],
+                    ["🎬 WebM", "Export animation as a WebM video (Chrome recommended)"],
+                    ["🎞️ GIF", "Export animation as a transparent GIF image"],
                 ],
             },
         ];
@@ -4272,8 +4357,8 @@ class PSDModal {
         const pswLayer = { id: `pswl_${Math.random().toString(36).slice(2)}`, name: `PSW${idx}`, points: [] };
         this.state.pswLayers.push(pswLayer);
         this._selectedPswLayerId  = pswLayer.id;
+        this._renderTree();
         if (this._activeTab === 'psw') this._renderPswTab();
-        this._drawPreview();
     }
 
     _deletePswLayer() {
@@ -4283,8 +4368,8 @@ class PSDModal {
         this._selectedPswLayerId   = null;
         this._selectedPswPointInfo = null;
         this._pswEditingPointId    = null;
+        this._renderTree();
         if (this._activeTab === 'psw') this._renderPswTab();
-        this._drawPreview();
     }
 
     _addPswSlot() {
@@ -6035,10 +6120,41 @@ function buildKeyframePanel(node) {
         exportBtn.disabled = false;
     };
 
+    const gifBtn = document.createElement("button");
+    gifBtn.style.cssText = kfBtnSt + ";background:#1a3a2a;border-color:#2a7a4a;";
+    gifBtn.textContent = t("kfGifExportBtn");
+    gifBtn.title = t("kfGifExportTooltip");
+    gifBtn.onclick = async () => {
+        if (!(node._keyframes?.length >= 2)) {
+            alert(t("kfNoKeyframes") + " (最低2つ必要)");
+            return;
+        }
+        gifBtn.disabled = true;
+        gifBtn.textContent = t("kfGifExporting");
+        try {
+            const blob = await exportAnimatedGIF(node, (f, total) => {
+                if (node._kfProgressEl) node._kfProgressEl.textContent = `GIF ${f}/${total}`;
+            });
+            if (blob) {
+                const url = URL.createObjectURL(blob);
+                const a   = document.createElement("a");
+                a.href = url; a.download = "animation.gif";
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+            }
+        } catch (e) {
+            console.error("[PSDFigureCreator] exportAnimatedGIF error:", e);
+            alert("GIF Export failed: " + e.message);
+        }
+        if (node._kfProgressEl) node._kfProgressEl.textContent = "";
+        gifBtn.textContent = t("kfGifExportBtn");
+        gifBtn.disabled = false;
+    };
+
     const rowBSpacer = document.createElement("span");
     rowBSpacer.style.cssText = "flex:1;";
 
-    rowB.append(clearBtn, fpsLabel, fpsInput, saveProjBtn, exportBtn, rowBSpacer, progressEl, playBtn, stopBtn);
+    rowB.append(clearBtn, fpsLabel, fpsInput, saveProjBtn, exportBtn, gifBtn, rowBSpacer, progressEl, playBtn, stopBtn);
 
     panel.append(rowA, tlCanvas, rowB);
     return panel;
